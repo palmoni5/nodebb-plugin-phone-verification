@@ -191,6 +191,9 @@ define('forum/phone-verification', ['hooks'], function (hooks) {
                         $('#phone-verification-container').addClass('hidden');
                         $('#phone-verified-badge').removeClass('hidden');
                         
+                        // הסרת השדה המקורי כדי למנוע כפילות
+                        $('#phoneNumber').prop('disabled', true).removeAttr('name');
+                        
                         // הוספת שדה נסתר עם הטלפון המאומת
                         if (!$('#phoneNumberVerified').length) {
                             $('<input>').attr({
@@ -199,6 +202,8 @@ define('forum/phone-verification', ['hooks'], function (hooks) {
                                 id: 'phoneNumberVerified',
                                 value: phone
                             }).appendTo('[component="register/local"]');
+                        } else {
+                            $('#phoneNumberVerified').val(phone);
                         }
                     } else {
                         showError(response.message || 'קוד שגוי');

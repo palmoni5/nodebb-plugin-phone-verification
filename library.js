@@ -146,10 +146,12 @@ const verifiedPhones = new Map();
 
 plugin.markPhoneAsVerified = function (phone) {
     const normalizedPhone = plugin.normalizePhone(phone);
+    console.log('[phone-verification] Marking phone as verified:', normalizedPhone);
     verifiedPhones.set(normalizedPhone, {
         verified: true,
         verifiedAt: Date.now()
     });
+    console.log('[phone-verification] Verified phones after marking:', Array.from(verifiedPhones.keys()));
 };
 
 plugin.isPhoneVerified = function (phone) {
@@ -282,21 +284,31 @@ plugin.clearAllPhones = function () {};
 plugin.checkRegistration = async function (data) {
     const phoneNumber = data.req.body.phoneNumber;
     
+    console.log('[phone-verification] checkRegistration called with phone:', phoneNumber);
+    
     if (!phoneNumber) {
+        console.log('[phone-verification] No phone number provided');
         throw new Error('חובה להזין מספר טלפון');
     }
     
     if (!plugin.validatePhoneNumber(phoneNumber)) {
+        console.log('[phone-verification] Invalid phone format:', phoneNumber);
         throw new Error('מספר הטלפון אינו תקין');
     }
     
     const normalizedPhone = plugin.normalizePhone(phoneNumber);
+    console.log('[phone-verification] Normalized phone:', normalizedPhone);
     
     if (await plugin.isPhoneExists(normalizedPhone)) {
+        console.log('[phone-verification] Phone already exists in DB');
         throw new Error('מספר הטלפון כבר רשום במערכת');
     }
     
-    if (!plugin.isPhoneVerified(normalizedPhone)) {
+    const isVerified = plugin.isPhoneVerified(normalizedPhone);
+    console.log('[phone-verification] Is phone verified:', isVerified);
+    console.log('[phone-verification] Verified phones map:', Array.from(verifiedPhones.keys()));
+    
+    if (!isVerified) {
         throw new Error('יש לאמת את מספר הטלפון לפני ההרשמה');
     }
     
