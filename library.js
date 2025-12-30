@@ -469,10 +469,10 @@ plugin.saveSettings = async function (settings) {
 };
 
 /**
- * פורמט קוד לקריאה קולית (פסיקים ורווחים בין הספרות)
+ * פורמט קוד לקריאה קולית (רווחים בין הספרות)
  */
 plugin.formatCodeForSpeech = function (code) {
-    return code.split('').join(', ');
+    return code.split('').join(' ');
 };
 
 /**
