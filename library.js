@@ -434,8 +434,8 @@ plugin.init = async function (params) {
     
     // Admin settings routes
     router.get('/api/admin/plugins/phone-verification/settings', middleware.admin.checkPrivileges, plugin.apiAdminGetSettings);
-    router.post('/api/admin/plugins/phone-verification/settings', middleware.admin.checkPrivileges, plugin.apiAdminSaveSettings);
-    router.post('/api/admin/plugins/phone-verification/test-call', middleware.admin.checkPrivileges, plugin.apiAdminTestCall);
+    router.post('/api/admin/plugins/phone-verification/settings', middleware.admin.checkPrivileges, middleware.applyCSRF, plugin.apiAdminSaveSettings);
+    router.post('/api/admin/plugins/phone-verification/test-call', middleware.admin.checkPrivileges, middleware.applyCSRF, plugin.apiAdminTestCall);
 };
 
 // ==================== הגדרות ====================

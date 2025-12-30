@@ -1,8 +1,8 @@
 'use strict';
 
-/* globals $, config */
+/* globals $, config, app */
 
-define('admin/plugins/phone-verification', [], function () {
+define('admin/plugins/phone-verification', ['csrf'], function (csrf) {
     var ACP = {};
 
     ACP.init = function () {
@@ -48,6 +48,9 @@ define('admin/plugins/phone-verification', [], function () {
         $.ajax({
             url: config.relative_path + '/api/admin/plugins/phone-verification/settings',
             method: 'POST',
+            headers: {
+                'x-csrf-token': csrf.get()
+            },
             data: {
                 voiceServerEnabled: $('#voiceServerEnabled').is(':checked'),
                 voiceServerApiKey: $('#voiceServerApiKey').val()
@@ -56,12 +59,16 @@ define('admin/plugins/phone-verification', [], function () {
                 if (response.success) {
                     $('#settings-status').show().delay(2000).fadeOut();
                 } else {
-                    alert('שגיאה בשמירת ההגדרות');
+                    alert('שגיאה בשמירת ההגדרות: ' + (response.message || response.error));
                 }
                 $btn.prop('disabled', false).html('<i class="fa fa-save"></i> שמור הגדרות');
             },
-            error: function () {
-                alert('שגיאה בשמירת ההגדרות');
+            error: function (xhr) {
+                var msg = 'שגיאה בשמירת ההגדרות';
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    msg += ': ' + xhr.responseJSON.message;
+                }
+                alert(msg);
                 $btn.prop('disabled', false).html('<i class="fa fa-save"></i> שמור הגדרות');
             }
         });
