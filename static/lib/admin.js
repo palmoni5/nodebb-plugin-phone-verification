@@ -2,7 +2,7 @@
 
 /* globals $, config */
 
-define('admin/settings/phone-verification', [], function () {
+define('admin/plugins/phone-verification', [], function () {
     var ACP = {};
 
     ACP.init = function () {
@@ -27,7 +27,7 @@ define('admin/settings/phone-verification', [], function () {
     
     function loadSettings() {
         $.ajax({
-            url: config.relative_path + '/api/admin/settings/phone-verification/settings',
+            url: config.relative_path + '/api/admin/plugins/phone-verification/settings',
             method: 'GET',
             success: function (response) {
                 if (response.success) {
@@ -46,7 +46,7 @@ define('admin/settings/phone-verification', [], function () {
         $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> שומר...');
         
         $.ajax({
-            url: config.relative_path + '/api/admin/settings/phone-verification/settings',
+            url: config.relative_path + '/api/admin/plugins/phone-verification/settings',
             method: 'POST',
             data: {
                 voiceServerEnabled: $('#voiceServerEnabled').is(':checked'),
@@ -81,7 +81,7 @@ define('admin/settings/phone-verification', [], function () {
         $status.html('');
         
         $.ajax({
-            url: config.relative_path + '/api/admin/settings/phone-verification/test-call',
+            url: config.relative_path + '/api/admin/plugins/phone-verification/test-call',
             method: 'POST',
             data: { phoneNumber: phone },
             success: function (response) {
@@ -101,7 +101,7 @@ define('admin/settings/phone-verification', [], function () {
     
     function loadUsers() {
         $.ajax({
-            url: config.relative_path + '/api/admin/settings/phone-verification/users',
+            url: config.relative_path + '/api/admin/plugins/phone-verification/users',
             method: 'GET',
             success: function (response) {
                 if (response.success) {
@@ -159,7 +159,7 @@ define('admin/settings/phone-verification', [], function () {
         }
         
         $.ajax({
-            url: config.relative_path + '/api/admin/settings/phone-verification/search',
+            url: config.relative_path + '/api/admin/plugins/phone-verification/search',
             method: 'GET',
             data: { phone: phone },
             success: function (response) {

@@ -323,11 +323,13 @@ plugin.userCreated = async function (data) {
  * הוספת קישור לעמוד ההגדרות בתפריט Settings
  */
 plugin.addAdminNavigation = async function (header) {
-    header.settings.push({
-        route: '/settings/phone-verification',
-        icon: 'fa-phone',
-        name: 'אימות טלפון'
-    });
+    if (header.plugins) {
+        header.plugins.push({
+            route: '/plugins/phone-verification',
+            icon: 'fa-phone',
+            name: 'אימות טלפון'
+        });
+    }
     return header;
 };
 
@@ -423,17 +425,17 @@ plugin.init = async function (params) {
     router.post('/api/user/:userslug/phone/visibility', middleware.authenticateRequest, middleware.applyCSRF, plugin.apiUpdatePhoneVisibility);
     router.post('/api/user/:userslug/phone/verify', middleware.authenticateRequest, middleware.applyCSRF, plugin.apiVerifyUserPhone);
     
-    // Admin routes - שינוי מ-plugins ל-settings
-    router.get('/admin/settings/phone-verification', middleware.admin.buildHeader, plugin.renderAdmin);
-    router.get('/api/admin/settings/phone-verification', plugin.renderAdmin);
-    router.get('/api/admin/settings/phone-verification/users', middleware.admin.checkPrivileges, plugin.apiAdminGetUsers);
-    router.get('/api/admin/settings/phone-verification/search', middleware.admin.checkPrivileges, plugin.apiAdminSearchByPhone);
-    router.get('/api/admin/settings/phone-verification/user/:uid', middleware.admin.checkPrivileges, plugin.apiAdminGetUserPhone);
+    // Admin routes
+    router.get('/admin/plugins/phone-verification', middleware.admin.buildHeader, plugin.renderAdmin);
+    router.get('/api/admin/plugins/phone-verification', plugin.renderAdmin);
+    router.get('/api/admin/plugins/phone-verification/users', middleware.admin.checkPrivileges, plugin.apiAdminGetUsers);
+    router.get('/api/admin/plugins/phone-verification/search', middleware.admin.checkPrivileges, plugin.apiAdminSearchByPhone);
+    router.get('/api/admin/plugins/phone-verification/user/:uid', middleware.admin.checkPrivileges, plugin.apiAdminGetUserPhone);
     
     // Admin settings routes
-    router.get('/api/admin/settings/phone-verification/settings', middleware.admin.checkPrivileges, plugin.apiAdminGetSettings);
-    router.post('/api/admin/settings/phone-verification/settings', middleware.admin.checkPrivileges, plugin.apiAdminSaveSettings);
-    router.post('/api/admin/settings/phone-verification/test-call', middleware.admin.checkPrivileges, plugin.apiAdminTestCall);
+    router.get('/api/admin/plugins/phone-verification/settings', middleware.admin.checkPrivileges, plugin.apiAdminGetSettings);
+    router.post('/api/admin/plugins/phone-verification/settings', middleware.admin.checkPrivileges, plugin.apiAdminSaveSettings);
+    router.post('/api/admin/plugins/phone-verification/test-call', middleware.admin.checkPrivileges, plugin.apiAdminTestCall);
 };
 
 // ==================== הגדרות ====================
@@ -639,7 +641,7 @@ plugin.apiInitiateCall = async function (req, res) {
 };
 
 plugin.renderAdmin = function (req, res) {
-    res.render('admin/settings/phone-verification', {});
+    res.render('admin/plugins/phone-verification', {});
 };
 
 // ==================== User Profile Phone API ====================
