@@ -1,0 +1,54 @@
+{
+    "id": "nodebb-plugin-phone-verification",
+    "name": "Phone Verification",
+    "description": "אימות מספר טלפון נייד בתהליך ההרשמה לפורום ובפרופיל המשתמש",
+    "version": "1.1.0",
+    "library": "./library.js",
+    "hooks": [
+        {
+            "hook": "filter:register.check",
+            "method": "checkRegistration"
+        },
+        {
+            "hook": "action:user.create",
+            "method": "userCreated"
+        },
+        {
+            "hook": "filter:admin.header.build",
+            "method": "addAdminNavigation"
+        },
+        {
+            "hook": "static:app.load",
+            "method": "init"
+        },
+        {
+            "hook": "filter:script.load",
+            "method": "loadScript"
+        },
+        {
+            "hook": "filter:user.whitelistFields",
+            "method": "whitelistFields"
+        },
+        {
+            "hook": "filter:user.account",
+            "method": "addPhoneToAccount"
+        }
+    ],
+    "modules": {
+        "forum/phone-verification": "static/lib/main.js",
+        "admin/settings/phone-verification": "static/lib/admin.js"
+    },
+    "scripts": [
+        "static/lib/main.js"
+    ],
+    "acpScripts": [
+        "static/lib/admin.js"
+    ],
+    "templates": "templates",
+    "staticDirs": {
+        "static": "static"
+    },
+    "nbbpm": {
+        "compatibility": "^2.0.0 || ^3.0.0"
+    }
+}

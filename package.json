@@ -1,0 +1,30 @@
+{
+    "name": "nodebb-plugin-phone-verification",
+    "version": "1.0.0",
+    "description": "אימות מספר טלפון נייד בתהליך ההרשמה לפורום NodeBB",
+    "main": "library.js",
+    "repository": {
+        "type": "git",
+        "url": ""
+    },
+    "keywords": [
+        "nodebb",
+        "plugin",
+        "phone",
+        "verification",
+        "registration"
+    ],
+    "author": "",
+    "license": "MIT",
+    "nbbpm": {
+        "compatibility": "^3.0.0"
+    },
+    "dependencies": {},
+    "devDependencies": {
+        "fast-check": "^3.14.0",
+        "mocha": "^10.2.0"
+    },
+    "scripts": {
+        "test": "mocha --recursive test/"
+    }
+}
