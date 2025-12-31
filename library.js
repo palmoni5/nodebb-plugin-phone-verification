@@ -519,7 +519,7 @@ plugin.saveSettings = async function (settings) {
 };
 
 /**
- * פורמט קוד לקריאה קולית (רווחים בין הספרות)
+ * פורמט קוד לקריאה קולית (נקודות בין הספרות)
  */
 plugin.formatCodeForSpeech = function (code) {
     return code.split('').join(' ');
@@ -543,7 +543,7 @@ plugin.sendVoiceCall = async function (phone, code) {
         const phonesData = {};
         phonesData[phone] = {
             name: 'משתמש',
-            moreinfo: `הקוד שלך לאתר הפורום הוא ${spokenCode}. אני חוזר, הקוד הוא ${spokenCode}`,
+            moreinfo: `הקוד שלך לאתר הפורום למנתחות התנהגות הוא ${spokenCode}. אני חוזר, הקוד הוא ${spokenCode}`,
             blocked: false
         };
         
