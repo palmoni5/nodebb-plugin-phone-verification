@@ -37,10 +37,18 @@ define('admin/plugins/phone-verification', [], function () {
             success: function (response) {
                 if (response.success) {
                     var settings = response.settings;
+                    
+                    // טעינת שדות קיימים
                     $('#voiceServerEnabled').prop('checked', settings.voiceServerEnabled);
                     if (settings.hasApiKey) {
                         $('#voiceServerApiKey').val('********');
                     }
+
+                    // === שדות חדשים שהוספנו ===
+                    $('#voiceServerUrl').val(settings.voiceServerUrl);
+                    $('#blockUnverifiedUsers').prop('checked', settings.blockUnverifiedUsers);
+                    $('#voiceTtsMode').val(settings.voiceTtsMode);
+                    $('#voiceMessageTemplate').val(settings.voiceMessageTemplate);
                 }
             }
         });
@@ -57,14 +65,26 @@ define('admin/plugins/phone-verification', [], function () {
                 'x-csrf-token': config.csrf_token
             },
             data: {
+                // שדות קיימים
                 voiceServerEnabled: $('#voiceServerEnabled').is(':checked'),
-                voiceServerApiKey: $('#voiceServerApiKey').val()
+                voiceServerApiKey: $('#voiceServerApiKey').val(),
+                
+                // === שדות חדשים לשמירה ===
+                voiceServerUrl: $('#voiceServerUrl').val(),
+                blockUnverifiedUsers: $('#blockUnverifiedUsers').is(':checked'),
+                voiceTtsMode: $('#voiceTtsMode').val(),
+                voiceMessageTemplate: $('#voiceMessageTemplate').val()
             },
             success: function (response) {
                 if (response.success) {
                     $('#settings-status').show().delay(2000).fadeOut();
                 } else {
-                    alert('שגיאה בשמירת ההגדרות: ' + (response.message || response.error));
+                    app.alert({
+                        title: 'שגיאה',
+                        message: 'שגיאה בשמירת ההגדרות: ' + (response.message || response.error),
+                        type: 'danger',
+                        timeout: 5000
+                    });
                 }
                 $btn.prop('disabled', false).html('<i class="fa fa-save"></i> שמור הגדרות');
             },
@@ -73,7 +93,12 @@ define('admin/plugins/phone-verification', [], function () {
                 if (xhr.responseJSON && xhr.responseJSON.message) {
                     msg += ': ' + xhr.responseJSON.message;
                 }
-                alert(msg);
+                app.alert({
+                    title: 'שגיאה',
+                    message: msg,
+                    type: 'danger',
+                    timeout: 5000
+                });
                 $btn.prop('disabled', false).html('<i class="fa fa-save"></i> שמור הגדרות');
             }
         });
@@ -103,7 +128,7 @@ define('admin/plugins/phone-verification', [], function () {
                 if (response.success) {
                     $status.html('<span class="text-success"><i class="fa fa-check"></i> ' + response.message + '</span>');
                 } else {
-                    $status.html('<span class="text-danger"><i class="fa fa-times"></i> ' + response.message + '</span>');
+                    $status.html('<span class="text-danger"><i class="fa fa-times"></i> ' + (response.message || response.error) + '</span>');
                 }
                 $btn.prop('disabled', false).html('<i class="fa fa-phone"></i> שלח שיחת בדיקה');
             },
@@ -144,11 +169,9 @@ define('admin/plugins/phone-verification', [], function () {
         
         if (totalPages <= 1) return;
         
-        // כפתור הקודם
         var prevDisabled = currentPage === 1 ? 'disabled' : '';
         $pagination.append('<li class="page-item ' + prevDisabled + '"><a class="page-link" href="#" data-page="' + (currentPage - 1) + '">&laquo; הקודם</a></li>');
         
-        // מספרי עמודים
         var startPage = Math.max(1, currentPage - 2);
         var endPage = Math.min(totalPages, currentPage + 2);
         
@@ -157,11 +180,9 @@ define('admin/plugins/phone-verification', [], function () {
             $pagination.append('<li class="page-item ' + active + '"><a class="page-link" href="#" data-page="' + i + '">' + i + '</a></li>');
         }
         
-        // כפתור הבא
         var nextDisabled = currentPage === totalPages ? 'disabled' : '';
         $pagination.append('<li class="page-item ' + nextDisabled + '"><a class="page-link" href="#" data-page="' + (currentPage + 1) + '">הבא &raquo;</a></li>');
         
-        // האזנה לקליקים
         $pagination.find('a').off('click').on('click', function(e) {
             e.preventDefault();
             var page = $(this).data('page');
@@ -188,7 +209,7 @@ define('admin/plugins/phone-verification', [], function () {
                 '<span class="label label-warning">לא מאומת</span>';
             
             var row = '<tr>' +
-                '<td><a href="' + config.relative_path + '/admin/manage/users/' + user.uid + '">' + user.uid + '</a></td>' +
+                '<td><a href="' + config.relative_path + '/admin/manage/users/' + user.uid + '">' + user.uid + ' (' + user.username + ')</a></td>' +
                 '<td dir="ltr">' + formatPhone(user.phone) + '</td>' +
                 '<td>' + verifiedDate + '</td>' +
                 '<td>' + statusBadge + '</td>' +
@@ -201,7 +222,8 @@ define('admin/plugins/phone-verification', [], function () {
     function updateStats(total, users) {
         $('#total-users').text(total || users.length);
         var verified = users.filter(function (u) { return u.phoneVerified; }).length;
-        $('#verified-count').text(verified);
+        // הערה: הסטטיסטיקה כאן חלקית כי היא מבוססת רק על העמוד הנוכחי, 
+        // בגרסה מתקדמת כדאי להביא סטטיסטיקה מהשרת.
     }
     
     function searchByPhone() {
@@ -221,7 +243,7 @@ define('admin/plugins/phone-verification', [], function () {
                     if (response.found) {
                         var user = response.user;
                         var html = '<strong>נמצא משתמש!</strong><br>' +
-                            'מזהה: <a href="' + config.relative_path + '/admin/manage/users/' + user.uid + '">' + user.uid + '</a><br>' +
+                            'מזהה: <a href="' + config.relative_path + '/admin/manage/users/' + user.uid + '">' + user.uid + ' (' + user.username + ')</a><br>' +
                             'טלפון: ' + formatPhone(user.phone) + '<br>' +
                             'סטטוס: ' + (user.phoneVerified ? 'מאומת' : 'לא מאומת');
                         showSearchResult('success', html);
