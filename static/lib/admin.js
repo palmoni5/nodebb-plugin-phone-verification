@@ -118,13 +118,10 @@ define('admin/plugins/phone-verification', [], function () {
         page = page || 1;
         currentPage = page;
         
-        var start = (page - 1) * itemsPerPage;
-        var stop = start + itemsPerPage - 1;
-        
         $.ajax({
             url: config.relative_path + '/api/admin/plugins/phone-verification/users',
             method: 'GET',
-            data: { start: start, stop: stop },
+            data: { page: page, perPage: itemsPerPage },
             success: function (response) {
                 if (response.success) {
                     renderUsers(response.users);
