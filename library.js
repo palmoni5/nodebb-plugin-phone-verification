@@ -9,15 +9,16 @@ let meta;
 
 const plugin = {};
 
-// ==================== אחסון קודי אימות (In-Memory) ====================
-const verificationCodes = new Map();
-
 // קבועים
 const CODE_EXPIRY_MINUTES = 5;
 const MAX_ATTEMPTS = 3;
 const BLOCK_DURATION_MINUTES = 15;
 const PHONE_FIELD_KEY = 'phoneNumber';
 const DEBUG_SKIP_VERIFICATION = false; // שנה ל-true לדיבוג
+const REDIS_PREFIX = 'phone-verification:code:';
+const IP_RATE_LIMIT_PREFIX = 'phone-verification:ip:';
+const MAX_REQUESTS_PER_IP = 10; // מקסימום בקשות ליום לכל IP
+const IP_BLOCK_HOURS = 24;
 
 // ==================== הגדרות ברירת מחדל ====================
 const defaultSettings = {
@@ -56,16 +57,23 @@ plugin.hashCode = function (code) {
     return crypto.createHash('sha256').update(code).digest('hex');
 };
 
-// ==================== קודי אימות ====================
+// ==================== קודי אימות (Redis - תומך ב-Clustering) ====================
 
-plugin.saveVerificationCode = function (phone, code) {
+plugin.saveVerificationCode = async function (phone, code) {
     const normalizedPhone = plugin.normalizePhone(phone);
     const now = Date.now();
     const expiresAt = now + (CODE_EXPIRY_MINUTES * 60 * 1000);
+    const key = `${REDIS_PREFIX}${normalizedPhone}`;
     
-    const existing = verificationCodes.get(normalizedPhone);
-    if (existing && existing.blockedUntil && existing.blockedUntil > now) {
-        const remainingMinutes = Math.ceil((existing.blockedUntil - now) / 60000);
+    if (!db) {
+        console.error('[phone-verification] DB not available for saving code');
+        return { success: false, error: 'DB_ERROR', message: 'שגיאת מערכת' };
+    }
+    
+    // בדיקה אם המספר חסום
+    const existing = await db.getObject(key);
+    if (existing && existing.blockedUntil && parseInt(existing.blockedUntil, 10) > now) {
+        const remainingMinutes = Math.ceil((parseInt(existing.blockedUntil, 10) - now) / 60000);
         return { 
             success: false, 
             error: 'PHONE_BLOCKED',
@@ -73,34 +81,48 @@ plugin.saveVerificationCode = function (phone, code) {
         };
     }
     
-    verificationCodes.set(normalizedPhone, {
+    const data = {
         hashedCode: plugin.hashCode(code),
         attempts: 0,
         createdAt: now,
         expiresAt: expiresAt,
-        blockedUntil: null
-    });
+        blockedUntil: 0
+    };
+    
+    await db.setObject(key, data);
+    // TTL של 20 דקות (כולל זמן חסימה אפשרי)
+    await db.pexpireAt(key, now + (20 * 60 * 1000));
     
     return { success: true, expiresAt };
 };
 
-plugin.getCodeExpiry = function (phone) {
+plugin.getCodeExpiry = async function (phone) {
     const normalizedPhone = plugin.normalizePhone(phone);
-    const data = verificationCodes.get(normalizedPhone);
-    return data ? data.expiresAt : null;
+    const key = `${REDIS_PREFIX}${normalizedPhone}`;
+    
+    if (!db) return null;
+    
+    const data = await db.getObject(key);
+    return data ? parseInt(data.expiresAt, 10) : null;
 };
 
-plugin.verifyCode = function (phone, code) {
+plugin.verifyCode = async function (phone, code) {
     const normalizedPhone = plugin.normalizePhone(phone);
     const now = Date.now();
-    const data = verificationCodes.get(normalizedPhone);
+    const key = `${REDIS_PREFIX}${normalizedPhone}`;
+    
+    if (!db) {
+        return { success: false, error: 'DB_ERROR', message: 'שגיאת מערכת' };
+    }
+    
+    const data = await db.getObject(key);
     
     if (!data) {
         return { success: false, error: 'CODE_NOT_FOUND', message: 'לא נמצא קוד אימות למספר זה' };
     }
     
-    if (data.blockedUntil && data.blockedUntil > now) {
-        const remainingMinutes = Math.ceil((data.blockedUntil - now) / 60000);
+    if (data.blockedUntil && parseInt(data.blockedUntil, 10) > now) {
+        const remainingMinutes = Math.ceil((parseInt(data.blockedUntil, 10) - now) / 60000);
         return { 
             success: false, 
             error: 'PHONE_BLOCKED',
@@ -108,20 +130,23 @@ plugin.verifyCode = function (phone, code) {
         };
     }
     
-    if (data.expiresAt < now) {
+    if (parseInt(data.expiresAt, 10) < now) {
         return { success: false, error: 'CODE_EXPIRED', message: 'קוד האימות פג תוקף' };
     }
     
     const hashedInput = plugin.hashCode(code);
     if (hashedInput === data.hashedCode) {
-        verificationCodes.delete(normalizedPhone);
+        await db.delete(key);
         return { success: true };
     }
     
-    data.attempts += 1;
+    // עדכון מספר ניסיונות
+    const attempts = parseInt(data.attempts, 10) + 1;
     
-    if (data.attempts >= MAX_ATTEMPTS) {
-        data.blockedUntil = now + (BLOCK_DURATION_MINUTES * 60 * 1000);
+    if (attempts >= MAX_ATTEMPTS) {
+        const blockedUntil = now + (BLOCK_DURATION_MINUTES * 60 * 1000);
+        await db.setObjectField(key, 'blockedUntil', blockedUntil);
+        await db.setObjectField(key, 'attempts', attempts);
         return { 
             success: false, 
             error: 'PHONE_BLOCKED',
@@ -129,20 +154,58 @@ plugin.verifyCode = function (phone, code) {
         };
     }
     
+    await db.setObjectField(key, 'attempts', attempts);
+    
     return { 
         success: false, 
         error: 'CODE_INVALID',
-        message: `קוד האימות שגוי. נותרו ${MAX_ATTEMPTS - data.attempts} ניסיונות`
+        message: `קוד האימות שגוי. נותרו ${MAX_ATTEMPTS - attempts} ניסיונות`
     };
 };
 
-plugin.clearVerificationCode = function (phone) {
+plugin.clearVerificationCode = async function (phone) {
     const normalizedPhone = plugin.normalizePhone(phone);
-    verificationCodes.delete(normalizedPhone);
+    const key = `${REDIS_PREFIX}${normalizedPhone}`;
+    if (db) {
+        await db.delete(key);
+    }
 };
 
-plugin.clearAllCodes = function () {
-    verificationCodes.clear();
+plugin.clearAllCodes = async function () {
+    // לא ממומש - Redis מנקה אוטומטית עם TTL
+};
+
+// ==================== Rate Limiting לפי IP ====================
+
+plugin.checkIpRateLimit = async function (ip) {
+    if (!db || !ip) return { allowed: true };
+    
+    const key = `${IP_RATE_LIMIT_PREFIX}${ip}`;
+    const count = await db.get(key);
+    
+    if (count && parseInt(count, 10) >= MAX_REQUESTS_PER_IP) {
+        return { 
+            allowed: false, 
+            error: 'IP_BLOCKED',
+            message: 'חרגת ממספר הבקשות המותר. נסה שוב מאוחר יותר.'
+        };
+    }
+    
+    return { allowed: true };
+};
+
+plugin.incrementIpCounter = async function (ip) {
+    if (!db || !ip) return;
+    
+    const key = `${IP_RATE_LIMIT_PREFIX}${ip}`;
+    const exists = await db.exists(key);
+    
+    await db.increment(key);
+    
+    if (!exists) {
+        // TTL של 24 שעות
+        await db.pexpireAt(key, Date.now() + (IP_BLOCK_HOURS * 60 * 60 * 1000));
+    }
 };
 
 // ==================== טלפונים מאומתים זמנית (Redis) ====================
@@ -274,23 +337,26 @@ plugin.findUserByPhone = async function (phone) {
 };
 
 /**
- * קבלת כל המשתמשים עם מספרי טלפון
+ * קבלת כל המשתמשים עם מספרי טלפון (עם Pagination)
  */
-plugin.getAllUsersWithPhones = async function () {
-    if (!db || !User) return [];
+plugin.getAllUsersWithPhones = async function (start = 0, stop = 49) {
+    if (!db || !User) return { users: [], total: 0 };
     
-    const uids = await db.getSortedSetRange('users:phone', 0, -1);
-    if (!uids || !uids.length) return [];
+    const total = await db.sortedSetCard('users:phone');
+    const uids = await db.getSortedSetRange('users:phone', start, stop);
+    if (!uids || !uids.length) return { users: [], total };
     
     const users = await User.getUsersFields(uids, ['uid', 'username', PHONE_FIELD_KEY, 'phoneVerified', 'phoneVerifiedAt']);
     
-    return users.filter(u => u && u[PHONE_FIELD_KEY]).map(u => ({
+    const usersList = users.filter(u => u && u[PHONE_FIELD_KEY]).map(u => ({
         uid: u.uid,
         username: u.username,
         phone: u[PHONE_FIELD_KEY],
         phoneVerified: parseInt(u.phoneVerified, 10) === 1,
         phoneVerifiedAt: parseInt(u.phoneVerifiedAt, 10) || null
     }));
+    
+    return { users: usersList, total };
 };
 
 plugin.canViewPhone = function (uid, callerUid, isAdmin) {
@@ -590,6 +656,13 @@ plugin.sendVoiceCall = async function (phone, code) {
 plugin.apiSendCode = async function (req, res) {
     try {
         const { phoneNumber } = req.body;
+        const clientIp = req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        
+        // בדיקת Rate Limit לפי IP
+        const ipCheck = await plugin.checkIpRateLimit(clientIp);
+        if (!ipCheck.allowed) {
+            return res.json(ipCheck);
+        }
         
         if (!phoneNumber) {
             return res.json({ success: false, error: 'PHONE_REQUIRED', message: 'חובה להזין מספר טלפון' });
@@ -606,11 +679,14 @@ plugin.apiSendCode = async function (req, res) {
         }
         
         const code = plugin.generateVerificationCode();
-        const saveResult = plugin.saveVerificationCode(normalizedPhone, code);
+        const saveResult = await plugin.saveVerificationCode(normalizedPhone, code);
         
         if (!saveResult.success) {
             return res.json(saveResult);
         }
+        
+        // עדכון מונה IP רק אחרי שליחה מוצלחת
+        await plugin.incrementIpCounter(clientIp);
         
         // שליחת שיחה קולית
         const voiceResult = await plugin.sendVoiceCall(normalizedPhone, code);
@@ -645,7 +721,7 @@ plugin.apiVerifyCode = async function (req, res) {
         }
         
         const normalizedPhone = plugin.normalizePhone(phoneNumber);
-        const result = plugin.verifyCode(normalizedPhone, code);
+        const result = await plugin.verifyCode(normalizedPhone, code);
         
         if (result.success) {
             await plugin.markPhoneAsVerified(normalizedPhone);
@@ -677,7 +753,7 @@ plugin.apiInitiateCall = async function (req, res) {
         }
         
         const code = plugin.generateVerificationCode();
-        const saveResult = plugin.saveVerificationCode(normalizedPhone, code);
+        const saveResult = await plugin.saveVerificationCode(normalizedPhone, code);
         
         if (!saveResult.success) {
             return res.json(saveResult);
@@ -854,7 +930,7 @@ plugin.apiVerifyUserPhone = async function (req, res) {
             return res.json({ success: false, error: 'NO_PHONE', message: 'לא נמצא מספר טלפון' });
         }
         
-        const result = plugin.verifyCode(phoneData.phone, code);
+        const result = await plugin.verifyCode(phoneData.phone, code);
         
         if (result.success) {
             // עדכון שהטלפון מאומת
@@ -874,8 +950,20 @@ plugin.apiVerifyUserPhone = async function (req, res) {
 
 plugin.apiAdminGetUsers = async function (req, res) {
     try {
-        const users = await plugin.getAllUsersWithPhones();
-        res.json({ success: true, users: users });
+        const page = parseInt(req.query.page, 10) || 1;
+        const perPage = parseInt(req.query.perPage, 10) || 50;
+        const start = (page - 1) * perPage;
+        const stop = start + perPage - 1;
+        
+        const result = await plugin.getAllUsersWithPhones(start, stop);
+        res.json({ 
+            success: true, 
+            users: result.users,
+            total: result.total,
+            page: page,
+            perPage: perPage,
+            totalPages: Math.ceil(result.total / perPage)
+        });
     } catch (err) {
         res.json({ success: false, error: 'SERVER_ERROR' });
     }
