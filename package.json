@@ -17,7 +17,7 @@
     "author": "",
     "license": "MIT",
     "nbbpm": {
-        "compatibility": "^3.0.0"
+        "compatibility": "^3.0.0 || ^4.0.0"
     },
     "dependencies": {},
     "devDependencies": {
