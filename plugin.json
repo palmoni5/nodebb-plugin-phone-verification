@@ -13,7 +13,8 @@
         { "hook": "filter:user.whitelistFields", "method": "whitelistFields" },
         { "hook": "filter:user.account", "method": "addPhoneToAccount" },
         { "hook": "filter:post.create", "method": "checkPostingPermissions" },
-        { "hook": "filter:topic.create", "method": "checkPostingPermissions" }
+        { "hook": "filter:topic.create", "method": "checkPostingPermissions" },
+        { "hook": "action:user.delete", "method": "userDelete" }
     ],
     "modules": {
         "../client/phone-verification.js": "static/lib/main.js",

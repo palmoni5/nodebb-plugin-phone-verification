@@ -75,8 +75,12 @@ plugin.checkPostingPermissions = async function (data) {
     const phoneData = await plugin.getUserPhone(uid);
 
     if (!phoneData || !phoneData.phoneVerified) {
-        throw new Error('<strong>גישה נדחתה:</strong> חובה לאמת מספר טלפון כדי לפרסם תוכן בפורום.<br/>' + 
-                        'אנא גש ל<a href="/user/me/edit" target="_blank">הגדרות הפרופיל שלך</a> ולחץ על "אמת מספר טלפון".');
+        // --- שינוי: שליפת ה-slug של המשתמש ---
+        const userSlug = await User.getUserField(uid, 'userslug');
+        const editUrl = userSlug ? `/user/${userSlug}/edit` : '/user/me/edit';
+        
+        throw new Error('חובה לאמת מספר טלפון כדי לפרסם תוכן בפורום.<br/>' + 
+                        'אנא גש ל<a href="' + editUrl + '" target="_blank">הגדרות הפרופיל שלך</a> ולחץ על "עדכון מספר טלפון".');
     }
 
     return data;
@@ -352,8 +356,12 @@ plugin.addPhoneToAccount = async function (data) {
 };
 
 plugin.loadScript = async function (data) {
-    if (data.tpl_url === 'register' || data.tpl === 'register') {
-        if (!data.scripts.includes('forum/phone-verification')) data.scripts.push('forum/phone-verification');
+    const pagesToLoad = ['register', 'account/edit', 'account/profile'];
+    
+    if (pagesToLoad.includes(data.tpl_url) || pagesToLoad.includes(data.tpl)) {
+        if (!data.scripts.includes('forum/phone-verification')) {
+            data.scripts.push('forum/phone-verification');
+        }
     }
     return data;
 };
@@ -697,6 +705,28 @@ plugin.apiAdminSearchByPhone = async function (req, res) {
         }
     } catch (err) {
         res.json({ success: false, error: 'SERVER_ERROR' });
+    }
+};
+
+plugin.userDelete = async function (data) {
+    // data מכיל: { callerUid, uid }
+    const uid = data.uid;
+    if (!uid) return;
+
+    try {
+        if (!db) db = require.main.require('./src/database');
+        const phones = await db.getSortedSetRangeByScore('phone:uid', uid, 1, uid);
+        
+        if (phones && phones.length > 0) {
+            const phone = phones[0]; 
+            
+            console.log(`[phone-verification] Deleting user ${uid}, releasing phone: ${phone}`);
+            await db.sortedSetRemove('phone:uid', phone);
+            await db.sortedSetRemove('users:phone', uid);
+            await plugin.clearVerifiedPhone(phone);
+        }
+    } catch (err) {
+        console.error('[phone-verification] Error releasing phone for user ' + uid, err);
     }
 };
 
