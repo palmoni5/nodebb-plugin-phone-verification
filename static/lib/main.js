@@ -2,14 +2,9 @@
 
 define('forum/phone-verification', ['hooks', 'translator'], function (hooks, translator) {
     
-    // ==================== פונקציות עזר משותפות ====================
-    
-    // פונקציה לניקוי ובדיקת תקינות מספר ישראלי
     function isValidIsraeliPhone(phone) {
         if (!phone) return false;
-        // שלב 1: ניקוי כל התווים שאינם ספרות (רווחים, מקפים וכו')
-        const cleanPhone = phone.replace(/\D/g, '');
-        // שלב 2: בדיקה שהמספר מתחיל ב-05 ויש לו בדיוק 10 ספרות
+        const cleanPhone = phone.replace(/[-\s]/g, '');
         return /^05\d{8}$/.test(cleanPhone);
     }
 
@@ -130,10 +125,10 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                 const phone = $('#phoneNumber').val().trim();
                 self.hideMessages();
                 
-                if (!isValidIsraeliPhone(phone)) {
-                    self.showError('מספר הטלפון אינו תקין (05X-XXXXXXX)');
-                    return;
-                }
+        //        if (!isValidIsraeliPhone(phone)) {
+          //          self.showError('מספר הטלפון אינו תקין (05X-XXXXXXX)');
+          //          return;
+         //       }
                 
                 const $btn = $(this);
                 $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> שולח...');
