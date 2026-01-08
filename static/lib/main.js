@@ -379,8 +379,8 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
             if ($('#user-phone-stat-item').length > 0) return;
 
             const verifyBadge = response.phoneVerified 
-                ? '<i class="fa fa-check-circle text-success" title="מאומת"></i>' 
-                : '<i class="" title="" style="cursor:pointer;" onclick="location.href=\'/user/'+userslug+'/edit\'"></i>';
+                ? '<i class="" title=""></i>' 
+                : '<i class="fa fa-exclamation-triangle text-warning" title="לא מאומת" style="cursor:pointer;" onclick="location.href=\'/user/'+userslug+'/edit\'"></i>';
 
             const privacyLabel = response.isOwner 
                 ? ' <span class="text-lowercase">(מוסתר)</span>' 
