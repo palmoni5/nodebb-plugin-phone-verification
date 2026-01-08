@@ -2,7 +2,7 @@
     "id": "nodebb-plugin-phone-verification",
     "name": "Phone Verification",
     "description": "אימות מספר טלפון נייד בתהליך ההרשמה לפורום ובפרופיל המשתמש",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "library": "./library.js",
     "hooks": [
         { "hook": "filter:register.check", "method": "checkRegistration" },
