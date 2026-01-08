@@ -14,7 +14,10 @@
         { "hook": "filter:user.account", "method": "addPhoneToAccount" },
         { "hook": "filter:post.create", "method": "checkPostingPermissions" },
         { "hook": "filter:topic.create", "method": "checkPostingPermissions" },
-        { "hook": "action:user.delete", "method": "userDelete" }
+        { "hook": "action:user.delete", "method": "userDelete" },
+        { "hook": "filter:post.upvote", "method": "checkVotingPermissions" },
+        { "hook": "filter:post.downvote", "method": "checkVotingPermissions" },
+        { "hook": "filter:post.unvote", "method": "checkVotingPermissions" }
     ],
     "modules": {
         "../client/phone-verification.js": "static/lib/main.js",
