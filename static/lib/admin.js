@@ -6,7 +6,12 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 	var ACP = {};
 
 	ACP.init = function() {
-		// 1. טעינת ושמירת הגדרות
+		// הגדרת משתנים בראש הפונקציה כדי שיהיו זמינים לכולם בתוכה
+		var usersTbody = $('#users-tbody');
+		var paginationUl = $('#users-pagination');
+		var currentPage = 1;
+
+		// 1. טעינת הגדרות
 		Settings.load('phone-verification', $('#voice-settings-form'));
 
 		$('#save-settings-btn').on('click', function(e) {
@@ -16,9 +21,46 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 			});
 		});
 
-		var usersTbody = $('#users-tbody');
-		var paginationUl = $('#users-pagination');
-		
+		// --- פונקציות עזר (הועברו פנימה כדי להכיר את המשתנים) ---
+
+		function renderPagination(curr, total) {
+			currentPage = curr;
+			paginationUl.empty(); // כעת הפונקציה מכירה את paginationUl
+			if(total <= 1) return;
+			for(var i=1; i<=total; i++) {
+				var active = i === curr ? 'active' : '';
+				paginationUl.append('<li class="' + active + '"><a href="#" class="page-link" data-page="' + i + '">' + i + '</a></li>');
+			}
+		}
+
+		function buildUserRow(user) {
+			var displayName = user.username || ('משתמש ' + user.uid);
+			// מניעת XSS בסיסית לשם המשתמש
+			var safeName = $('<div>').text(displayName).html(); 
+			var userLink = '/admin/manage/users?searchBy=uid&query=' + user.uid + '&page=1&sortBy=lastonline';
+			
+			var statusBadge = user.phoneVerified ? '<span class="label label-success">מאומת</span>' : '<span class="label label-warning">ממתין</span>';
+			
+			// מניעת XSS לטלפון
+			var safePhone = user.phone ? $('<div>').text(user.phone).html() : '<span class="text-muted">-- ללא --</span>';
+			var dateStr = user.phoneVerifiedAt ? new Date(user.phoneVerifiedAt).toLocaleDateString('he-IL') : '-';
+
+			var btnVerify = '<button class="btn btn-xs btn-success verify-user-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="אמת"><i class="fa fa-check"></i></button>';
+			var btnUnverify = '<button class="btn btn-xs btn-warning unverify-user-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="בטל"><i class="fa fa-ban"></i></button>';
+			var btnDelete = '<button class="btn btn-xs btn-danger delete-phone-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="מחק"><i class="fa fa-trash"></i></button>';
+
+			var actionBtn = user.phoneVerified ? btnUnverify : btnVerify;
+
+			return '<tr>' +
+				'<td>' + user.uid + '</td>' +
+				'<td><a href="' + userLink + '" target="_blank"><strong>' + safeName + '</strong></a></td>' +
+				'<td dir="ltr">' + safePhone + '</td>' +
+				'<td>' + dateStr + '</td>' +
+				'<td>' + statusBadge + '</td>' +
+				'<td class="text-right"><div class="btn-group">' + actionBtn + btnDelete + '</div></td>' +
+			'</tr>';
+		}
+
 		function loadUsers(page) {
 			page = page || 1;
 			usersTbody.html('<tr><td colspan="6" class="text-center"><i class="fa fa-spinner fa-spin"></i> טוען נתונים...</td></tr>');
@@ -39,7 +81,10 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 			});
 		}
 
+		// --- הפעלת ברירת מחדל ---
 		loadUsers(1);
+
+		// --- אירועים (Event Listeners) ---
 
 		paginationUl.on('click', 'a.page-link', function(e) {
 			e.preventDefault();
@@ -51,7 +96,6 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 			bootbox.prompt("הזן את <b>שם המשתמש</b> שברצונך להוסיף לרשימת המאומתים:", function(username) {
 				if (!username) return;
 
-				// שימוש בפונקציה שלנו מה-server
 				socket.emit('plugins.call2all.getUidByUsername', { username: username }, function(err, uid) {
 					if (err) return alerts.error(err.message || 'משתמש לא נמצא');
 
@@ -59,6 +103,9 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 						title: "הזן מספר טלפון עבור " + username + " (אופציונלי)",
 						inputType: 'text',
 						callback: function(phone) {
+							// תיקון קריטי: אם לחצו ביטול, עצור
+							if (phone === null) return;
+
 							var confirmMsg = "<h4>סיכום פעולה</h4>" +
 											 "<b>שם משתמש:</b> " + username + "<br/>" +
 											 "<b>מספר טלפון:</b> " + (phone ? phone : "ללא מספר (יוגדר כמאומת)") + "<br/><br/>" +
@@ -135,42 +182,6 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 			});
 		});
 	};
-
-	function buildUserRow(user) {
-		var displayName = user.username || ('משתמש ' + user.uid);
-		var safeName = displayName.replace(/"/g, '&quot;');
-		var userLink = '/admin/manage/users?searchBy=uid&query=' + user.uid + '&page=1&sortBy=lastonline';
-		
-		var statusBadge = user.phoneVerified ? '<span class="label label-success">מאומת</span>' : '<span class="label label-warning">ממתין</span>';
-		var displayPhone = user.phone ? user.phone : '<span class="text-muted">-- ללא --</span>';
-		var dateStr = user.phoneVerifiedAt ? new Date(user.phoneVerifiedAt).toLocaleDateString('he-IL') : '-';
-
-		var btnVerify = '<button class="btn btn-xs btn-success verify-user-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="אמת"><i class="fa fa-check"></i></button>';
-		var btnUnverify = '<button class="btn btn-xs btn-warning unverify-user-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="בטל"><i class="fa fa-ban"></i></button>';
-		var btnDelete = '<button class="btn btn-xs btn-danger delete-phone-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="מחק"><i class="fa fa-trash"></i></button>';
-
-		var actionBtn = user.phoneVerified ? btnUnverify : btnVerify;
-
-		return '<tr>' +
-			'<td>' + user.uid + '</td>' +
-			'<td><a href="' + userLink + '" target="_blank"><strong>' + displayName + '</strong></a></td>' +
-			'<td dir="ltr">' + displayPhone + '</td>' +
-			'<td>' + dateStr + '</td>' +
-			'<td>' + statusBadge + '</td>' +
-			'<td class="text-right"><div class="btn-group">' + actionBtn + btnDelete + '</div></td>' +
-		'</tr>';
-	}
-
-	var currentPage = 1;
-	function renderPagination(curr, total) {
-		currentPage = curr;
-		paginationUl.empty();
-		if(total <= 1) return;
-		for(var i=1; i<=total; i++) {
-			var active = i === curr ? 'active' : '';
-			paginationUl.append('<li class="' + active + '"><a href="#" class="page-link" data-page="' + i + '">' + i + '</a></li>');
-		}
-	}
 
 	return ACP;
 });
