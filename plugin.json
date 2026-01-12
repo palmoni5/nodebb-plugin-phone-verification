@@ -17,7 +17,8 @@
         { "hook": "action:user.delete", "method": "userDelete" },
         { "hook": "filter:post.upvote", "method": "checkVotingPermissions" },
         { "hook": "filter:post.downvote", "method": "checkVotingPermissions" },
-        { "hook": "filter:post.unvote", "method": "checkVotingPermissions" }
+        { "hook": "filter:post.unvote", "method": "checkVotingPermissions" },
+        { "hook": "filter:messaging.save", "method": "checkMessagingPermissions"}
     ],
     "modules": {
         "../client/phone-verification.js": "static/lib/main.js",
