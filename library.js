@@ -76,7 +76,7 @@ plugin.checkPostingPermissions = async function (data) {
     if (!phoneData || !phoneData.phoneVerified) {
         const userSlug = await User.getUserField(uid, 'userslug');
         const editUrl = userSlug ? `/user/${userSlug}/edit` : '/user/me/edit';
-        throw new Error('חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש להגדרות הפרופיל שלך.');
+        throw new Error(`חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`);
     }
     return data;
 };
@@ -93,7 +93,9 @@ plugin.checkVotingPermissions = async function (data) {
 
     const phoneData = await plugin.getUserPhone(uid);
     if (!phoneData || !phoneData.phoneVerified) {
-        throw new Error('חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש להגדרות הפרופיל שלך.');
+        const userSlug = await User.getUserField(uid, 'userslug');
+        const editUrl = userSlug ? `/user/${userSlug}/edit` : '/user/me/edit';
+        throw new Error(`חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`);
     }
     return data;
 };
@@ -101,27 +103,34 @@ plugin.checkVotingPermissions = async function (data) {
 plugin.checkMessagingPermissions = async function (data) {
     const uid = data.fromUid;
     if (!uid || parseInt(uid, 10) === 0) return data;
+    
     const settings = await plugin.getSettings();
     if (!settings.blockUnverifiedUsers) return data;
+
     const isAdmin = await User.isAdministrator(uid);
     if (isAdmin) return data;
+
     const phoneData = await plugin.getUserPhone(uid);
     if (phoneData && phoneData.phoneVerified) {
         return data;
-    }
+    }    
     const Messaging = require.main.require('./src/messaging');
     const roomUids = await Messaging.getUidsInRoom(data.roomId, 0, -1);
     const targetUids = roomUids.filter(id => parseInt(id, 10) !== parseInt(uid, 10));
-    let isChattingWithAdmin = false;
+    if (targetUids.length === 0) {
+        const userSlug = await User.getUserField(uid, 'userslug');
+        const editUrl = userSlug ? `/user/${userSlug}/edit` : '/user/me/edit';
+        throw new Error(`חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`);
+    }
     for (const targetUid of targetUids) {
-        const targetIsAdmin = await User.isAdministrator(targetUid);
-        if (targetIsAdmin) {
-            isChattingWithAdmin = true;
-            break;
+        const isTargetAdmin = await User.isAdministrator(targetUid);
+        if (!isTargetAdmin) {
+        const userSlug = await User.getUserField(uid, 'userslug');
+        const editUrl = userSlug ? `/user/${userSlug}/edit` : '/user/me/edit';
+        throw new Error(`חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`);
         }
     }
-    if (isChattingWithAdmin) return data;
-    throw new Error('חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש להגדרות הפרופיל שלך.');
+    return data;
 };
 
 // ==================== שליחת שיחה קולית ====================
