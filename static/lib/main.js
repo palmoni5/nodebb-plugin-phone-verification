@@ -55,7 +55,7 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
             if (this.resendCountdown > 0) {
                 $btn.prop('disabled', true).text('שלח שוב (' + this.resendCountdown + ')');
             } else {
-                $btn.prop('disabled', false).text('שלח קוד שוב');
+                $btn.prop('disabled', false).text('שלח צינתוק שוב');
             }
         },
 
@@ -63,11 +63,11 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
             const self = this;
             const $form = $('[component="register/local"]');
             if (!$form.length) return;
-            if ($('#phoneNumber').length) return; // מניעת כפילות
+            if ($('#phoneNumber').length) return; 
             
-            // איפוס משתנים
             self.phoneVerified = false;
 
+            // עדכון טקסטים לצינתוק
             const phoneHtml = `
                 <div class="mb-2 d-flex flex-column gap-2" id="phone-verification-container">
                     <label for="phoneNumber">מספר טלפון <span class="text-danger">*</span></label>
@@ -76,10 +76,10 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                             <input class="form-control" type="tel" name="phoneNumber" id="phoneNumber" 
                                    placeholder="05X-XXXXXXX" dir="ltr" autocomplete="tel" />
                             <button class="btn btn-primary" type="button" id="send-code-btn">
-                                <i class="fa fa-phone"></i> שלח קוד
+                                <i class="fa fa-phone"></i> שלח לאימות
                             </button>
                         </div>
-                        <span class="form-text text-xs">תקבל שיחה קולית עם קוד אימות</span>
+                        <span class="form-text text-xs">תקבל שיחה (צינתוק). קוד האימות הוא <strong>4 הספרות האחרונות</strong> של המספר המתקשר.</span>
                         <div id="phone-error" class="text-danger text-xs hidden"></div>
                         <div id="phone-success" class="text-success text-xs hidden"></div>
                     </div>
@@ -90,13 +90,13 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                     <div class="d-flex flex-column">
                         <div class="input-group">
                             <input class="form-control" type="text" id="verificationCode" 
-                                   placeholder="הזן קוד 6 ספרות" maxlength="6" dir="ltr" />
+                                   placeholder="4 ספרות אחרונות של המספר המחייג" maxlength="4" dir="ltr" />
                             <button class="btn btn-success" type="button" id="verify-code-btn">
                                 <i class="fa fa-check"></i> אמת
                             </button>
                         </div>
                         <button class="btn btn-link btn-sm p-0 text-start" type="button" id="resend-code-btn">
-                            שלח קוד שוב
+                            שלח צינתוק שוב
                         </button>
                     </div>
                 </div>
@@ -120,15 +120,9 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
         attachEventListeners: function() {
             const self = this;
 
-            // שליחת קוד
             $('#send-code-btn').off('click').on('click', function () {
                 const phone = $('#phoneNumber').val().trim();
                 self.hideMessages();
-                
-        //        if (!isValidIsraeliPhone(phone)) {
-          //          self.showError('מספר הטלפון אינו תקין (05X-XXXXXXX)');
-          //          return;
-         //       }
                 
                 const $btn = $(this);
                 $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> שולח...');
@@ -140,31 +134,30 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                     headers: { 'x-csrf-token': config.csrf_token },
                     success: function (response) {
                         if (response.success) {
-                            self.showSuccess('קוד אימות נשלח!');
+                            self.showSuccess('צינתוק נשלח! בדוק את השיחות הנכנסות.');
                             $('#verification-code-container').removeClass('hidden');
                             $('#phoneNumber').prop('readonly', true);
                             $btn.addClass('hidden');
                             self.startResendTimer();
                         } else {
                             self.showError(response.message || 'שגיאה בשליחה');
-                            $btn.prop('disabled', false).html('<i class="fa fa-phone"></i> שלח קוד');
+                            $btn.prop('disabled', false).html('<i class="fa fa-phone"></i> שלח לאימות');
                         }
                     },
                     error: function() {
                         self.showError('שגיאת תקשורת');
-                        $btn.prop('disabled', false).html('<i class="fa fa-phone"></i> שלח קוד');
+                        $btn.prop('disabled', false).html('<i class="fa fa-phone"></i> שלח לאימות');
                     }
                 });
             });
 
-            // אימות קוד
             $('#verify-code-btn').off('click').on('click', function () {
                 const phone = $('#phoneNumber').val().trim();
                 const code = $('#verificationCode').val().trim();
                 self.hideMessages();
                 
                 if (!code || code.length < 4) {
-                    self.showError('קוד לא תקין');
+                    self.showError('נא להזין 4 ספרות');
                     return;
                 }
                 
@@ -179,7 +172,6 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                             $('#verification-code-container, #phone-verification-container').addClass('hidden');
                             $('#phone-verified-badge').removeClass('hidden');
                             
-                            // טיפול בשדה הנסתר לטופס
                             $('#phoneNumber').prop('disabled', true).removeAttr('name');
                             if (!$('#phoneNumberVerified').length) {
                                 $('<input>').attr({type: 'hidden', name: 'phoneNumber', id: 'phoneNumberVerified', value: phone}).appendTo('[component="register/local"]');
@@ -193,7 +185,6 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                 });
             });
 
-            // חסימת שליחת טופס
             $('[component="register/local"]').off('submit.phone').on('submit.phone', function (e) {
                 if (!self.phoneVerified) {
                     e.preventDefault();
@@ -207,7 +198,6 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
         checkExistingVerification: function() {
             const phone = $('#phoneNumber').val();
             if (phone && this.validatePhone(phone)) {
-                // לוגיקה לבדיקה אם כבר אומת
             }
         }
     };
@@ -215,14 +205,11 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
     // ==================== לוגיקה לעריכת פרופיל (Edit Profile) ====================
 
     function handleProfileEdit() {
-        // בדיקת כפילות קפדנית לפי ID
         if ($('#sidebar-phone-li').length > 0) return;
 
         const userslug = ajaxify.data.userslug;
 
-        // שליפת הנתונים הנוכחיים
         $.getJSON(config.relative_path + '/api/user/' + userslug + '/phone', function (response) {
-            // בדיקה נוספת בתוך ה-callback למקרה של טעינה כפולה מהירה
             if ($('#sidebar-phone-li').length > 0) return;
 
             if (!response.success) return;
@@ -233,7 +220,6 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
      
             const hasPhone = response.phone && response.phone.length > 0;
             
-            // עדכון הטקסט שיהיה ברור יותר
             const buttonLabel = hasPhone ? 'אמת מספר טלפון' : 'הוסף מספר טלפון';
             
             const menuHtml = `
@@ -258,10 +244,10 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
         });
     }
 
-    // פונקציה חדשה לניהול החלונית הקופצת בעריכה
     function openPhoneManagementModal(currentPhone, isVerified, userslug) {
         const phoneVal = currentPhone || '';
         
+        // עדכון טקסטים במודאל
         const modalHtml = `
             <div class="phone-modal-content">
                 <div class="mb-3">
@@ -273,7 +259,7 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                         <i class="fa fa-info-circle"></i> 
                         ${isVerified 
                             ? 'המספר הנוכחי מאומת. שינוי המספר יחייב אימות מחדש.' 
-                            : 'יש להזין מספר ולקבל שיחה קולית לאימות.'}
+                            : 'יש להזין מספר ולקבל צינתוק לאימות.'}
                     </div>
                 </div>
                 <div id="modal-alert-area"></div>
@@ -289,20 +275,18 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                     className: 'btn-ghost'
                 },
                 verify: {
-                    label: 'שלח קוד אימות',
+                    label: 'שלח צינתוק',
                     className: 'btn-primary',
                     callback: function() {
                         const newPhone = $('#modal-phoneNumber').val();
                         
-                        // שימוש בפונקציית הבדיקה המתוקנת
                         if (!isValidIsraeliPhone(newPhone)) {
                             showModalAlert('נא להזין מספר תקין (05X-XXXXXXX)', 'danger');
-                            return false; // מונע סגירה
+                            return false; 
                         }
 
-                        // התחלת תהליך האימות
                         performPhoneUpdate(newPhone, userslug, dialog);
-                        return false; // מונע סגירה אוטומטית
+                        return false; 
                     }
                 }
             }
@@ -315,31 +299,29 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
     }
 
     function performPhoneUpdate(phone, userslug, dialog) {
-        const $btn = dialog.find('.bootbox-accept'); // הכפתור הכחול
+        const $btn = dialog.find('.bootbox-accept'); 
         $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> שולח...');
 
-        // 1. שמירה זמנית
         $.post(config.relative_path + '/api/user/' + userslug + '/phone', { 
             phoneNumber: phone,
             _csrf: config.csrf_token 
         }, function(res) {
             if (!res.success) {
                 showModalAlert(res.message || res.error, 'danger');
-                $btn.prop('disabled', false).text('שלח קוד אימות');
+                $btn.prop('disabled', false).text('שלח צינתוק');
                 return;
             }
 
-            // 2. שליחת השיחה
             $.post(config.relative_path + '/api/phone-verification/send-code', { 
                 phoneNumber: phone,
                 _csrf: config.csrf_token 
             }, function(callRes) {
                 if (callRes.success) {
-                    dialog.modal('hide'); // סגירת החלון הראשון
+                    dialog.modal('hide'); 
                     
-                    // 3. פתיחת חלון הזנת קוד
+                    // עדכון ה-Prompt לקליטת 4 ספרות
                     bootbox.prompt({
-                        title: "הזן את הקוד שקיבלת בשיחה",
+                        title: "הזן את 4 הספרות האחרונות של המספר שחייג אליך כעת",
                         inputType: 'number',
                         callback: function (code) {
                             if (!code) return;
@@ -350,7 +332,7 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                             }, function(verifyRes){
                                 if(verifyRes.success) {
                                     app.alertSuccess('הטלפון עודכן ואומת בהצלחה!');
-                                    ajaxify.refresh(); // רענון הדף
+                                    ajaxify.refresh(); 
                                 } else {
                                     app.alertError(verifyRes.message || 'קוד שגוי');
                                 }
@@ -358,8 +340,8 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                         }
                     });
                 } else {
-                    showModalAlert(callRes.message || 'שגיאה בשליחת השיחה', 'danger');
-                    $btn.prop('disabled', false).text('שלח קוד אימות');
+                    showModalAlert(callRes.message || 'שגיאה בשליחת הצינתוק', 'danger');
+                    $btn.prop('disabled', false).text('שלח צינתוק');
                 }
             });
         });
@@ -368,7 +350,6 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
     // ==================== לוגיקה לצפייה בפרופיל (View Profile) ====================
 
     function handleProfileView() {
-        // בדיקה ראשונית למניעת כפילות עוד לפני הקריאה לשרת
         if ($('#user-phone-stat-item').length > 0) return;
 
         const userslug = ajaxify.data.userslug;
@@ -376,15 +357,13 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
         $.getJSON(config.relative_path + '/api/user/' + userslug + '/phone', function (response) {
             if (!response.success) return;
             
-            // אם אין מספר טלפון - לא מציגים את הקוביה בכלל (גם לא לבעל הפרופיל)
             if (!response.phone) return;
 
-            // בדיקה נוספת למניעת כפילות
             if ($('#user-phone-stat-item').length > 0) return;
 
             const verifyBadge = response.phoneVerified 
                 ? '<i class="" title=""></i>' 
-                : '<i class="fa fa-exclamation-triangle text-warning" title="לא מאומת" style="cursor:pointer;" onclick="location.href=\'/user/'+userslug+'/edit\'"></i>';
+                : '<i class="fa fa-exclamation-triangle text-warning" title="לא מאומת" style="cursor:pointer;" onclick="location.href=\'' + config.relative_path + '/user/' + userslug + '/edit\'"></i>';
 
             const privacyLabel = response.isOwner 
                 ? ' <span class="text-lowercase">(מוסתר)</span>' 

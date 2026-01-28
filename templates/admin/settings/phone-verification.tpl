@@ -5,17 +5,18 @@
             <div class="panel panel-primary">
                 <div class="panel-heading">
                     <h3 class="panel-title">
-                        <i class="fa fa-cog"></i> הגדרות Call2All - שיחות קוליות
+                        <i class="fa fa-cog"></i> הגדרות Call2All - אימות בצינתוק
                     </h3>
                 </div>
                 <div class="panel-body">
                     <form id="voice-settings-form">
+                
                         <div class="form-group">
                             <label for="voiceServerEnabled">
                                 <input type="checkbox" id="voiceServerEnabled" name="voiceServerEnabled" />
-                                הפעל שיחות קוליות
+                                הפעל אימות בצינתוק
                             </label>
-                            <p class="help-block">כאשר מופעל, התוסף ישלח שיחה קולית עם קוד האימות דרך Call2All</p>
+                            <p class="help-block">כאשר מופעל, התוסף ישלח צינתוק (שיחה מנותקת) למשתמש, שיצטרך לאמת את 4 הספרות האחרונות של המספר המתקשר.</p>
                         </div>
                         
                         <div class="form-group">
@@ -28,30 +29,16 @@
                         <div class="form-group">
                             <details style="border: 1px solid #ddd; padding: 10px; border-radius: 4px; background-color: #f9f9f9;">
                                 <summary style="cursor: pointer; font-weight: bold; color: #337ab7; outline: none;">
-                                    <i class="fa fa-cogs"></i> הגדרות מתקדמות (עריכת פרמטרים ותוכן ההודעה)
+                                    <i class="fa fa-cogs"></i> הגדרות מתקדמות (API Endpoint)
                                 </summary>
                                 <div style="margin-top: 15px; padding-left: 10px; border-left: 3px solid #337ab7;">
                                     <div class="form-group">
                                         <label for="voiceServerUrl">כתובת ה-API (Endpoint)</label>
                                         <input type="text" class="form-control" id="voiceServerUrl" name="voiceServerUrl" 
-                                               placeholder="https://www.call2all.co.il/ym/api/RunCampaign" dir="ltr" />
-                                        <p class="help-block">כתובת השרת אליו נשלחת הבקשה.</p>
+                                               placeholder="https://www.call2all.co.il/ym/api/RunTzintuk" dir="ltr" />
+                                        <p class="help-block">כתובת השרת אליו נשלחת בקשת הצינתוק.</p>
                                     </div>
-                                    <div class="form-group">
-                                        <label for="voiceTtsMode">מצב ה-TTS (ttsMode)</label>
-                                        <input type="text" class="form-control" id="voiceTtsMode" name="voiceTtsMode" 
-                                               placeholder="1" dir="ltr" />
-                                        <p class="help-block">ערך הפרמטר <code>ttsMode</code> הנשלח ל-API (ברירת מחדל: 1).</p>
                                     </div>
-                                    <div class="form-group">
-                                        <label for="voiceMessageTemplate">תוכן ההודעה (Template)</label>
-                                        <textarea class="form-control" id="voiceMessageTemplate" name="voiceMessageTemplate" rows="3" dir="rtl"></textarea>
-                                        <p class="help-block">
-                                            הטקסט שיוקרא למשתמש.<br/>
-                                            Placeholders חובה: <code>{code}</code> (הקוד), <code>{siteTitle}</code> (שם האתר)
-                                        </p>
-                                    </div>
-                                </div>
                             </details>
                         </div>
                         <hr />
@@ -80,14 +67,14 @@
                     
                     <hr />
                     
-                    <h4>בדיקת שיחה</h4>
+                    <h4>בדיקת צינתוק</h4>
                     <div class="form-inline">
                         <div class="form-group">
                             <input type="text" class="form-control" id="test-phone" 
                                    placeholder="05X-XXXXXXX" dir="ltr" style="width: 150px;" />
                         </div>
                         <button type="button" class="btn btn-warning" id="test-call-btn">
-                            <i class="fa fa-phone"></i> שלח שיחת בדיקה
+                            <i class="fa fa-phone"></i> שלח צינתוק בדיקה
                         </button>
                         <span id="test-status" style="margin-right: 10px;"></span>
                     </div>

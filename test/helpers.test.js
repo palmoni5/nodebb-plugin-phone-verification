@@ -128,31 +128,4 @@ describe('Phone Verification Helper Functions', function () {
             assert.strictEqual(plugin.normalizePhone(123), '');
         });
     });
-    
-    // **Feature: nodebb-phone-verification, Property 2: יצירת קוד אימות תקין**
-    // **Validates: Requirements 2.1**
-    describe('generateVerificationCode', function () {
-        
-        it('Property 2: generated code should always be exactly 6 digits', function () {
-            fc.assert(
-                fc.property(fc.constant(null), () => {
-                    const code = plugin.generateVerificationCode();
-                    // Should be exactly 6 characters
-                    const correctLength = code.length === 6;
-                    // Should only contain digits
-                    const onlyDigits = /^\d{6}$/.test(code);
-                    
-                    return correctLength && onlyDigits;
-                }),
-                { numRuns: 100 }
-            );
-        });
-        
-        it('Property 2: generated codes should be strings', function () {
-            for (let i = 0; i < 100; i++) {
-                const code = plugin.generateVerificationCode();
-                assert.strictEqual(typeof code, 'string');
-            }
-        });
-    });
 });

@@ -1,7 +1,8 @@
 'use strict';
 
 const crypto = require('crypto');
-const https = require('https'); // הוספנו עבור SSL
+const https = require('https');
+const nconf = require.main.require('nconf');
 
 // NodeBB modules
 let db;
@@ -24,12 +25,12 @@ const IP_BLOCK_HOURS = 24;
 
 // ==================== הגדרות ברירת מחדל ====================
 const defaultSettings = {
-    voiceServerUrl: 'https://www.call2all.co.il/ym/api/RunCampaign',
+    // עודכן לכתובת הצינתוקים
+    voiceServerUrl: 'https://www.call2all.co.il/ym/api/RunTzintuk', 
     voiceServerApiKey: '',
     voiceServerEnabled: false,
     blockUnverifiedUsers: false,
-    voiceTtsMode: '1',
-    voiceMessageTemplate: 'הקוד שלך לאתר {siteTitle} הוא {code} אני חוזר. הקוד הוא {code}'
+    // הוסרו הגדרות TTS שאינן רלוונטיות לצינתוק
 };
 
 // ==================== פונקציות עזר ====================
@@ -46,18 +47,8 @@ plugin.normalizePhone = function (phone) {
     return phone.replace(/[-\s]/g, '');
 };
 
-plugin.generateVerificationCode = function () {
-    const randomBytes = crypto.randomBytes(3);
-    const number = randomBytes.readUIntBE(0, 3) % 1000000;
-    return number.toString().padStart(6, '0');
-};
-
 plugin.hashCode = function (code) {
     return crypto.createHash('sha256').update(code).digest('hex');
-};
-
-plugin.formatCodeForSpeech = function (code) {
-    return code.split('').join(' ');
 };
 
 // ==================== בדיקת הרשאות ====================
@@ -75,7 +66,8 @@ plugin.checkPostingPermissions = async function (data) {
     const phoneData = await plugin.getUserPhone(uid);
     if (!phoneData || !phoneData.phoneVerified) {
         const userSlug = await User.getUserField(uid, 'userslug');
-        const editUrl = userSlug ? `/user/${userSlug}/edit` : '/user/me/edit';
+        const relativePath = nconf.get('relative_path');
+        const editUrl = userSlug ? `${relativePath}/user/${userSlug}/edit` : `${relativePath}/user/me/edit`;
         throw new Error(`חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`);
     }
     return data;
@@ -94,16 +86,18 @@ plugin.checkVotingPermissions = async function (data) {
     const phoneData = await plugin.getUserPhone(uid);
     if (!phoneData || !phoneData.phoneVerified) {
         const userSlug = await User.getUserField(uid, 'userslug');
-        const editUrl = userSlug ? `/user/${userSlug}/edit` : '/user/me/edit';
+        const relativePath = nconf.get('relative_path');
+        const editUrl = userSlug ? `${relativePath}/user/${userSlug}/edit` : `${relativePath}/user/me/edit`;
         throw new Error(`חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`);
     }
     return data;
 };
 
 plugin.checkMessagingPermissions = async function (data) {
-    const uid = data.fromUid;
-    if (!uid || parseInt(uid, 10) === 0) return data;
+    const uid = data.fromuid || data.fromUid || data.uid;
     
+    if (!uid || parseInt(uid, 10) === 0) return data;
+
     const settings = await plugin.getSettings();
     if (!settings.blockUnverifiedUsers) return data;
 
@@ -113,64 +107,77 @@ plugin.checkMessagingPermissions = async function (data) {
     const phoneData = await plugin.getUserPhone(uid);
     if (phoneData && phoneData.phoneVerified) {
         return data;
-    }    
-    const Messaging = require.main.require('./src/messaging');
-    const roomUids = await Messaging.getUidsInRoom(data.roomId, 0, -1);
-    const targetUids = roomUids.filter(id => parseInt(id, 10) !== parseInt(uid, 10));
-    if (targetUids.length === 0) {
-        const userSlug = await User.getUserField(uid, 'userslug');
-        const editUrl = userSlug ? `/user/${userSlug}/edit` : '/user/me/edit';
-        throw new Error(`חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`);
     }
+
+    const Messaging = require.main.require('./src/messaging');
+    
+    if (!data.roomId) return data;
+
+    const roomUids = await Messaging.getUidsInRoom(data.roomId, 0, -1);
+    
+    const targetUids = roomUids.filter(id => parseInt(id, 10) !== parseInt(uid, 10));
+
+    const userSlug = await User.getUserField(uid, 'userslug');
+    const relativePath = nconf.get('relative_path');
+    const editUrl = userSlug ? `${relativePath}/user/${userSlug}/edit` : `${relativePath}/user/me/edit`;
+    const errorMsg = `חובה לאמת מספר טלפון כדי לשלוח הודעות.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`;
+
+    if (targetUids.length === 0) {
+        throw new Error(errorMsg);
+    }
+
     for (const targetUid of targetUids) {
         const isTargetAdmin = await User.isAdministrator(targetUid);
         if (!isTargetAdmin) {
-        const userSlug = await User.getUserField(uid, 'userslug');
-        const editUrl = userSlug ? `/user/${userSlug}/edit` : '/user/me/edit';
-        throw new Error(`חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`);
+            throw new Error(errorMsg);
         }
     }
+
     return data;
 };
 
-// ==================== שליחת שיחה קולית ====================
+// ==================== שליחת צינתוק (Tzintuk) ====================
 
-plugin.sendVoiceCall = async function (phone, code) {
+plugin.sendTzintuk = async function (phone) {
     const settings = await plugin.getSettings();
-    if (!meta) meta = require.main.require('./src/meta');
-    const siteTitle = meta.config.title || 'האתר';
 
     if (!settings.voiceServerEnabled || !settings.voiceServerApiKey) {
         return { success: false, error: 'VOICE_SERVER_DISABLED', message: 'שרת השיחות לא מוגדר' };
     }
 
     try {
-        const spokenCode = plugin.formatCodeForSpeech(code);
-        let messageText = settings.voiceMessageTemplate || defaultSettings.voiceMessageTemplate;
-        messageText = messageText.replace(/{code}/g, spokenCode).replace(/{siteTitle}/g, siteTitle);
-
-        const phonesData = {};
-        phonesData[phone] = { name: 'משתמש', moreinfo: messageText, blocked: false };
-
         const baseUrl = settings.voiceServerUrl || defaultSettings.voiceServerUrl;
+        
+        // פרמטרים לצינתוק עם זיהוי רנדומלי
         const params = new URLSearchParams({
-            ttsMode: settings.voiceTtsMode || defaultSettings.voiceTtsMode,
-            phones: JSON.stringify(phonesData),
-            token: settings.voiceServerApiKey
+            token: settings.voiceServerApiKey,
+            phones: phone,
+            callerId: 'RAND', // חובה עבור קבלת קוד אימות אוטומטי
+            // tzintukTimeOut: '9' // אופציונלי
         });
 
         const url = `${baseUrl}?${params.toString()}`;
         
-        // עקיפת בעיות SSL (אופציונלי)
         const agent = new https.Agent({ rejectUnauthorized: false });
         
         const response = await fetch(url, { method: 'GET', agent: agent });
 
         if (!response.ok) return { success: false, error: 'VOICE_SERVER_ERROR', message: 'שגיאה בשרת השיחות' };
+        
         const result = await response.json();
         
-        if (result.responseStatus === 'OK' || result.responseStatus === 'WAITING') {
-            return { success: true, result };
+        // בדיקת תקינות התגובה וקיום verifyCode
+        if (result.responseStatus === 'OK' && result.verifyCode) {
+            return { 
+                success: true, 
+                code: result.verifyCode, // מחזירים את הקוד שהתקבל מהשרת
+                message: 'השיחה נשלחה בהצלחה'
+            };
+        } else if (result.errors && Object.keys(result.errors).length > 0) {
+             // טיפול בשגיאות ספציפיות
+             const errorKey = Object.keys(result.errors)[0];
+             const errorMsg = result.errors[errorKey];
+             return { success: false, error: 'API_ERROR', message: `שגיאה: ${errorMsg}` };
         } else {
             return { success: false, error: 'VOICE_SERVER_ERROR', message: result.message || 'שגיאה בשליחת השיחה' };
         }
@@ -209,11 +216,11 @@ plugin.verifyCode = async function (phone, code) {
     if (!db) return { success: false, error: 'DB_ERROR' };
     const data = await db.getObject(key);
     
-    if (!data) return { success: false, error: 'CODE_NOT_FOUND', message: 'לא נמצא קוד אימות' };
+    if (!data) return { success: false, error: 'CODE_NOT_FOUND', message: 'לא נמצאה בקשת אימות' };
     if (data.blockedUntil && parseInt(data.blockedUntil, 10) > now) {
         return { success: false, error: 'PHONE_BLOCKED', message: 'המספר חסום זמנית' };
     }
-    if (parseInt(data.expiresAt, 10) < now) return { success: false, error: 'CODE_EXPIRED', message: 'הקוד פג תוקף' };
+    if (parseInt(data.expiresAt, 10) < now) return { success: false, error: 'CODE_EXPIRED', message: 'הזמן לאימות עבר' };
     
     if (plugin.hashCode(code) === data.hashedCode) {
         await db.delete(key);
@@ -274,7 +281,6 @@ plugin.clearVerifiedPhone = async function (phone) {
 plugin.savePhoneToUser = async function (uid, phone, verified = true, forceOverride = false) {
     if (!db || !User) return { success: false };
     
-    // 1. מקרה של אימות ללא טלפון
     if (!phone) {
         await User.setUserFields(uid, {
             phoneVerified: verified ? 1 : 0,
@@ -291,25 +297,18 @@ plugin.savePhoneToUser = async function (uid, phone, verified = true, forceOverr
     const normalizedPhone = plugin.normalizePhone(phone);
     const existingUid = await db.sortedSetScore('phone:uid', normalizedPhone);
     
-    // 2. בדיקת כפילות
     if (existingUid) {
-        // אם המספר שייך למשתמש אחר
         if (parseInt(existingUid, 10) !== parseInt(uid, 10)) {
             if (forceOverride) {
-                // === תיקון: דריסה בכוח (למנהלים) ===
-                // מחיקת המספר מהמשתמש הישן
                 console.log(`[phone-verification] Force overwriting phone ${normalizedPhone} from user ${existingUid} to ${uid}`);
                 
-                // הסרה מה-Set של המשתמש הישן
                 await User.setUserFields(existingUid, { 
                     [PHONE_FIELD_KEY]: '', 
                     phoneVerified: 0, 
                     phoneVerifiedAt: 0 
                 });
                 await db.sortedSetRemove('users:phone', existingUid);
-                // (הערה: לא צריך להסיר מ-phone:uid כי אנחנו דורסים אותו מייד למטה)
             } else {
-                // אם זה לא מנהל - זרוק שגיאה
                 return { success: false, error: 'PHONE_EXISTS', message: 'המספר כבר רשום למשתמש אחר' };
             }
         }
@@ -322,7 +321,6 @@ plugin.savePhoneToUser = async function (uid, phone, verified = true, forceOverr
         phoneVerifiedAt: verified ? now : 0
     });
     
-    // עדכון/דריסה של הרשומה ב-DB
     await db.sortedSetAdd('phone:uid', uid, normalizedPhone);
     await db.sortedSetAdd('users:phone', now, uid);
     return { success: true };
@@ -380,19 +378,16 @@ plugin.checkRegistration = async function (data) {
         const existingUid = await plugin.findUserByPhone(normalizedPhone);
         
         if (existingUid) {
-            // אם המשתמש מחובר ומנסה לעדכן, או אם המספר תפוס על ידי מישהו אחר
             if (!req.uid || parseInt(existingUid, 10) !== parseInt(req.uid, 10)) {
                 throw new Error('מספר הטלפון כבר רשום במערכת למשתמש אחר');
             }
         }
 
-        // אם הגעת לכאן, הנתונים תקינים. 
-        // ב-Hook של checkRegistration, פשוט מחזירים את data כדי להמשיך ברישום.
         return data;
         
     } catch (err) {
         console.error('[phone-verification] Registration check error:', err);
-        throw err; // NodeBB יציג את השגיאה הזו למשתמש בטופס הרישום
+        throw err;
     }
 };
 
@@ -452,7 +447,6 @@ plugin.init = async function (params) {
     // --- SOCKET.IO EVENTS ---
     SocketPlugins.call2all = {};
 
-    // 1. פונקציה חדשה: מציאת משתמש לפי שם
     SocketPlugins.call2all.getUidByUsername = async function (socket, data) {
         if (!data || !data.username) throw new Error('נא לספק שם משתמש');
         const uid = await User.getUidByUsername(data.username);
@@ -460,7 +454,6 @@ plugin.init = async function (params) {
         return uid;
     };
 
-    // 2. הוספת משתמש מאומת (מתוקן)
     SocketPlugins.call2all.adminAddVerifiedUser = async function (socket, data) {
         if (!data || !data.uid) throw new Error('חסר מזהה משתמש');
         const isAdmin = await User.isAdministrator(socket.uid);
@@ -477,7 +470,6 @@ plugin.init = async function (params) {
         if (!result.success) throw new Error(result.message);
     };
 
-    // 3. אימות ידני
     SocketPlugins.call2all.adminVerifyUser = async function (socket, data) {
         if (!data || !data.uid) throw new Error('שגיאה');
         const isAdmin = await User.isAdministrator(socket.uid);
@@ -487,7 +479,6 @@ plugin.init = async function (params) {
         await db.sortedSetAdd('users:phone', Date.now(), data.uid);
     };
 
-    // 4. ביטול אימות
     SocketPlugins.call2all.adminUnverifyUser = async function (socket, data) {
         if (!data || !data.uid) throw new Error('שגיאה');
         const isAdmin = await User.isAdministrator(socket.uid);
@@ -496,7 +487,6 @@ plugin.init = async function (params) {
         await User.setUserFields(data.uid, { phoneVerified: 0, phoneVerifiedAt: 0 });
     };
 
-    // 5. מחיקת טלפון
     SocketPlugins.call2all.adminDeleteUserPhone = async function (socket, data) {
         if (!data || !data.uid) throw new Error('שגיאה');
         const isAdmin = await User.isAdministrator(socket.uid);
@@ -547,22 +537,18 @@ plugin.getSettings = async function () {
     return {
         voiceServerUrl: settings.voiceServerUrl || defaultSettings.voiceServerUrl,
         voiceServerApiKey: settings.voiceServerApiKey || '',
-        voiceServerEnabled: isTrue(settings.voiceServerEnabled), // בדיקה מורחבת
-        blockUnverifiedUsers: isTrue(settings.blockUnverifiedUsers), // בדיקה מורחבת
-        voiceTtsMode: settings.voiceTtsMode || '1',
-        voiceMessageTemplate: settings.voiceMessageTemplate || defaultSettings.voiceMessageTemplate
+        voiceServerEnabled: isTrue(settings.voiceServerEnabled),
+        blockUnverifiedUsers: isTrue(settings.blockUnverifiedUsers)
     };
 };
 
 plugin.saveSettings = async function (settings) {
     if (!meta) return false;
     await meta.settings.set('phone-verification', {
-        voiceServerUrl: settings.voiceServerUrl || '',
+        voiceServerUrl: settings.voiceServerUrl || defaultSettings.voiceServerUrl,
         voiceServerApiKey: settings.voiceServerApiKey || '',
         voiceServerEnabled: settings.voiceServerEnabled ? 'true' : 'false',
-        blockUnverifiedUsers: settings.blockUnverifiedUsers ? 'true' : 'false',
-        voiceTtsMode: settings.voiceTtsMode || '1',
-        voiceMessageTemplate: settings.voiceMessageTemplate || defaultSettings.voiceMessageTemplate
+        blockUnverifiedUsers: settings.blockUnverifiedUsers ? 'true' : 'false'
     });
     return true;
 };
@@ -590,7 +576,9 @@ plugin.apiAdminTestCall = async function (req, res) {
     try {
         const { phoneNumber } = req.body;
         if (!phoneNumber) return res.json({ success: false, message: 'חסר טלפון' });
-        const result = await plugin.sendVoiceCall(plugin.normalizePhone(phoneNumber), '123456');
+        
+        // בצינתוק, השרת מחזיר את הקוד. בבדיקה אנו רק מוודאים שיצא שיחה
+        const result = await plugin.sendTzintuk(plugin.normalizePhone(phoneNumber));
         res.json(result);
     } catch (err) { res.json({ success: false }); }
 };
@@ -609,17 +597,25 @@ plugin.apiSendCode = async function (req, res) {
         if (!plugin.validatePhoneNumber(clean)) return res.json({ success: false, error: 'INVALID' });
 
         const existingUid = await plugin.findUserByPhone(clean);
-        // בדיקת כפילות: אם המספר שייך למשתמש אחר
         if (existingUid && (!req.uid || parseInt(existingUid) !== parseInt(req.uid))) {
             return res.json({ success: false, error: 'EXISTS', message: 'המספר תפוס' });
         }
         
-        const code = plugin.generateVerificationCode();
-        await plugin.saveVerificationCode(clean, code);
-        const result = await plugin.sendVoiceCall(clean, code);
+        // --- שינוי: שליחת בקשה לשרת כדי לקבל את הקוד (Caller ID) ---
+        const result = await plugin.sendTzintuk(clean);
         
-        res.json({ success: true, message: result.success ? 'שיחה נשלחה' : 'קוד נוצר', voiceCallSent: result.success });
-    } catch (err) { res.json({ success: false }); }
+        if (result.success && result.code) {
+             // שמירת הקוד שהתקבל מהשרת
+             await plugin.saveVerificationCode(clean, result.code);
+             res.json({ success: true, message: 'צינתוק נשלח, נא להזין את 4 הספרות האחרונות', method: 'tzintuk' });
+        } else {
+             res.json({ success: false, message: result.message || 'תקלה בשליחת הצינתוק' });
+        }
+        
+    } catch (err) { 
+        console.error(err);
+        res.json({ success: false }); 
+    }
 };
 
 plugin.apiVerifyCode = async function (req, res) {
@@ -653,19 +649,28 @@ plugin.apiInitiateCall = async function (req, res) {
             }
         }
         
-        const code = plugin.generateVerificationCode();
-        const saveResult = await plugin.saveVerificationCode(normalizedPhone, code);
+        // --- שינוי: שליחת צינתוק במקום יצירת קוד מקומי ---
+        const result = await plugin.sendTzintuk(normalizedPhone);
+        
+        if (!result.success || !result.code) {
+            return res.json(result);
+        }
+
+        const saveResult = await plugin.saveVerificationCode(normalizedPhone, result.code);
         
         if (!saveResult.success) {
             return res.json(saveResult);
         }
         
-        res.json({ success: true, phone: normalizedPhone, code: code, expiresAt: saveResult.expiresAt });
+        // שימו לב: לא מחזירים את הקוד לקליינט בייצור (אלא אם רוצים דיבוג)
+        // כאן הקליינט צריך לבקש מהמשתמש את 4 הספרות האחרונות
+        res.json({ success: true, phone: normalizedPhone, expiresAt: saveResult.expiresAt });
         
     } catch (err) {
         res.json({ success: false, error: 'SERVER_ERROR', message: 'אירעה שגיאה' });
     }
 };
+
 plugin.apiGetUserPhoneProfile = async function (req, res) {
     try {
         const uid = await User.getUidByUserslug(req.params.userslug);
