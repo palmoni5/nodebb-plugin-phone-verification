@@ -94,16 +94,36 @@
                     
                     <hr />
                     
-                    <h4>בדיקת צינתוק</h4>
-                    <div class="form-inline">
-                        <div class="form-group">
-                            <input type="text" class="form-control" id="test-phone" 
-                                   placeholder="05X-XXXXXXX" dir="ltr" style="width: 150px;" />
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h4>בדיקת צינתוק</h4>
+                            <div class="form-inline">
+                                <div class="form-group">
+                                    <input type="text" class="form-control" id="test-phone" 
+                                           placeholder="05X-XXXXXXX" dir="ltr" style="width: 150px;" />
+                                </div>
+                                <button type="button" class="btn btn-warning" id="test-call-btn">
+                                    <i class="fa fa-phone"></i> שלח צינתוק בדיקה
+                                </button>
+                                <span id="test-status" style="margin-right: 10px;"></span>
+                            </div>
                         </div>
-                        <button type="button" class="btn btn-warning" id="test-call-btn">
-                            <i class="fa fa-phone"></i> שלח צינתוק בדיקה
-                        </button>
-                        <span id="test-status" style="margin-right: 10px;"></span>
+                        <div class="col-md-6">
+                            <h4>בדיקת שיחה יזומה</h4>
+                            <div class="form-inline">
+                                <div class="form-group">
+                                    <input type="text" class="form-control" id="test-user-call-phone" 
+                                           placeholder="05X-XXXXXXX" dir="ltr" style="width: 150px;" />
+                                </div>
+                                <button type="button" class="btn btn-info" id="test-user-call-btn">
+                                    <i class="fa fa-phone-square"></i> בדוק שיחה יזומה
+                                </button>
+                                <span id="test-user-call-status" style="margin-right: 10px;"></span>
+                            </div>
+                            <p class="help-block" style="font-size: 12px; margin-top: 5px;">
+                                יוצר קוד אימות זמני ומציג אותו למנהל לבדיקה
+                            </p>
+                        </div>
                     </div>
                 </div>
             </div>

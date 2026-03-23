@@ -250,6 +250,25 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 			});
 		});
 
+		$('#test-user-call-btn').on('click', function() {
+			var phone = $('#test-user-call-phone').val();
+			if(!phone) return alerts.error('נא להזין מספר לבדיקה');
+			
+			$.post(config.relative_path + '/api/admin/plugins/phone-verification/test-user-call', { phoneNumber: phone, _csrf: config.csrf_token }, function(res) {
+				if(res.success) {
+					var msg = 'קוד אימות נוצר בהצלחה';
+					if (res.code) {
+						msg += '<br><strong>קוד האימות: ' + res.code + '</strong>';
+					}
+					if (res.phoneNumber) {
+						msg += '<br><strong>מספר הקו: ' + res.phoneNumber + '</strong>';
+					}
+					alerts.success(msg);
+				}
+				else alerts.error(res.message || 'שגיאה ביצירת קוד האימות');
+			});
+		});
+
 		$('#users-table').on('click', '.verify-user-btn', function() {
 			var uid = $(this).data('uid');
 			var name = $(this).data('name');

@@ -118,12 +118,12 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                         ${showTzintuk ? `
                         <label class="form-check-label">
                             <input class="form-check-input" type="radio" name="verificationMethod" value="tzintuk" />
-                            אימות ע"י צינתוק
+                            אני רוצה לקבל את הקוד בצינתוק
                         </label>` : ''}
                         ${showUserCall ? `
                         <label class="form-check-label">
                             <input class="form-check-input" type="radio" name="verificationMethod" value="user-call" />
-                            אימות ע"י שיחה יזומה מצד המשתמש
+                            אני רוצה להתקשר לקו ולשמוע את הקוד
                         </label>` : ''}
                     </div>
                     <div class="form-text text-xs" id="method-help"></div>
@@ -178,7 +178,7 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
         updateMethodHelp: function(settings) {
             const method = this.getSelectedMethod();
             if (method === 'user-call') {
-                $('#method-help').text('לאחר קבלת הקוד יש להתקשר לקו המוצג ולשמוע את קוד האימות.');
+                $('#method-help').text('לאחר לחיצה על שלח לאימות יש להתקשר לקו המוצג ולשמוע את קוד האימות.');
                 $('#verificationCode').attr('placeholder', 'קוד שהושמע בשיחה');
                 $('#user-call-number-text').toggle(!!(settings.userCallNumber && settings.userCallNumber.length));
             } else {
