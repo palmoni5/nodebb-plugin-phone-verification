@@ -8,12 +8,32 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
         return /^05\d{8}$/.test(cleanPhone);
     }
 
+    let publicSettingsCache = null;
+
+    function loadPublicSettings() {
+        if (publicSettingsCache) return $.Deferred().resolve(publicSettingsCache).promise();
+        return $.getJSON(config.relative_path + '/api/phone-verification/public-settings')
+            .then(function(res) {
+                if (res && res.success && res.settings) {
+                    publicSettingsCache = res.settings;
+                } else {
+                    publicSettingsCache = { voiceServerEnabled: true, userCallEnabled: false, userCallNumber: '' };
+                }
+                return publicSettingsCache;
+            })
+            .catch(function() {
+                publicSettingsCache = { voiceServerEnabled: true, userCallEnabled: false, userCallNumber: '' };
+                return publicSettingsCache;
+            });
+    }
+
     // ==================== לוגיקה לעמוד הרשמה (Registration) ====================
     
     const Registration = {
         resendTimer: null,
         resendCountdown: 0,
         phoneVerified: false,
+        registerBtn: null,
 
         validatePhone: function(phone) {
             return isValidIsraeliPhone(phone);
@@ -55,7 +75,9 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
             if (this.resendCountdown > 0) {
                 $btn.prop('disabled', true).text('שלח שוב (' + this.resendCountdown + ')');
             } else {
-                $btn.prop('disabled', false).text('שלח צינתוק שוב');
+                const method = this.getSelectedMethod();
+                const label = method === 'user-call' ? 'הכן קוד שוב' : 'שלח צינתוק שוב';
+                $btn.prop('disabled', false).text(label);
             }
         },
 
@@ -66,9 +88,50 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
             if ($('#phoneNumber').length) return; 
             
             self.phoneVerified = false;
+            const $registerBtn = $form.find('button[type="submit"]');
+            self.registerBtn = $registerBtn;
+            if ($registerBtn.length) {
+                $registerBtn.prop('disabled', true);
+            }
 
-            // עדכון טקסטים לצינתוק
-            const phoneHtml = `
+            loadPublicSettings().then(function(settings) {
+                const phoneHtml = self.buildPhoneHtml(settings);
+                if ($registerBtn.length) {
+                    $(phoneHtml).insertBefore($registerBtn);
+                } else {
+                    $form.append(phoneHtml);
+                }
+
+                self.attachEventListeners(settings);
+                self.checkExistingVerification();
+            });
+        },
+
+        buildPhoneHtml: function(settings) {
+            const showTzintuk = settings.voiceServerEnabled;
+            const showUserCall = settings.userCallEnabled;
+            const userCallNumber = settings.userCallNumber || '';
+            const methodsHtml = `
+                <div class="mb-2 d-flex flex-column gap-2 hidden" id="verification-methods">
+                    <label class="form-label fw-bold">בחר שיטת אימות</label>
+                    <div class="d-flex flex-column gap-1">
+                        ${showTzintuk ? `
+                        <label class="form-check-label">
+                            <input class="form-check-input" type="radio" name="verificationMethod" value="tzintuk" />
+                            אימות ע"י צינתוק
+                        </label>` : ''}
+                        ${showUserCall ? `
+                        <label class="form-check-label">
+                            <input class="form-check-input" type="radio" name="verificationMethod" value="user-call" />
+                            אימות ע"י שיחה יזומה מצד המשתמש
+                        </label>` : ''}
+                    </div>
+                    <div class="form-text text-xs" id="method-help"></div>
+                    <div class="form-text text-xs" id="user-call-number-text" ${userCallNumber ? '' : 'style="display:none;"'}>מספר הקו: <span dir="ltr">${userCallNumber}</span></div>
+                </div>
+            `;
+
+            return `
                 <div class="mb-2 d-flex flex-column gap-2" id="phone-verification-container">
                     <label for="phoneNumber">מספר טלפון <span class="text-danger">*</span></label>
                     <div class="d-flex flex-column">
@@ -79,7 +142,7 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                                 <i class="fa fa-phone"></i> שלח לאימות
                             </button>
                         </div>
-                        <span class="form-text text-xs">תקבל שיחה (צינתוק). קוד האימות הוא <strong>4 הספרות האחרונות</strong> של המספר המתקשר.</span>
+                        ${methodsHtml}
                         <div id="phone-error" class="text-danger text-xs hidden"></div>
                         <div id="phone-success" class="text-success text-xs hidden"></div>
                     </div>
@@ -105,28 +168,89 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                     <i class="fa fa-check-circle"></i> מספר הטלפון אומת בהצלחה!
                 </div>
             `;
-            
-            const $registerBtn = $form.find('button[type="submit"]');
-            if ($registerBtn.length) {
-                $(phoneHtml).insertBefore($registerBtn);
-            } else {
-                $form.append(phoneHtml);
-            }
-
-            self.attachEventListeners();
-            self.checkExistingVerification();
         },
 
-        attachEventListeners: function() {
+        getSelectedMethod: function() {
+            const selected = $('input[name="verificationMethod"]:checked').val();
+            return selected || 'tzintuk';
+        },
+
+        updateMethodHelp: function(settings) {
+            const method = this.getSelectedMethod();
+            if (method === 'user-call') {
+                $('#method-help').text('לאחר קבלת הקוד יש להתקשר לקו המוצג ולשמוע את קוד האימות.');
+                $('#verificationCode').attr('placeholder', 'קוד שהושמע בשיחה');
+                $('#user-call-number-text').toggle(!!(settings.userCallNumber && settings.userCallNumber.length));
+            } else {
+                $('#method-help').text('תקבל שיחה (צינתוק). קוד האימות הוא 4 הספרות האחרונות של המספר המתקשר.');
+                $('#verificationCode').attr('placeholder', '4 ספרות אחרונות של המספר המחייג');
+                $('#user-call-number-text').hide();
+            }
+        },
+
+        attachEventListeners: function(settings) {
             const self = this;
 
-            $('#send-code-btn').off('click').on('click', function () {
+            function showMethodsIfValid() {
+                const phone = $('#phoneNumber').val().trim();
+                if (self.validatePhone(phone)) {
+                    $('#verification-methods').removeClass('hidden');
+                    if ($('input[name="verificationMethod"]:checked').length === 0) {
+                        if (settings.voiceServerEnabled) {
+                            $('input[name="verificationMethod"][value="tzintuk"]').prop('checked', true);
+                        } else if (settings.userCallEnabled) {
+                            $('input[name="verificationMethod"][value="user-call"]').prop('checked', true);
+                        }
+                    }
+                    self.updateMethodHelp(settings);
+                } else {
+                    $('#verification-methods').addClass('hidden');
+                }
+            }
+
+            $('#phoneNumber').on('input blur', function() {
+                showMethodsIfValid();
+            });
+
+            $('body').on('change', 'input[name="verificationMethod"]', function() {
+                self.updateMethodHelp(settings);
+                self.updateResendButton();
+            });
+
+            function requestVerification(method) {
                 const phone = $('#phoneNumber').val().trim();
                 self.hideMessages();
-                
-                const $btn = $(this);
+
+                const $btn = $('#send-code-btn');
                 $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> שולח...');
-                
+
+                if (method === 'user-call') {
+                    $.ajax({
+                        url: config.relative_path + '/api/phone-verification/request-user-call',
+                        method: 'POST',
+                        data: { phoneNumber: phone },
+                        headers: { 'x-csrf-token': config.csrf_token },
+                        success: function (response) {
+                            if (response.success) {
+                                var numberText = response.callNumber ? (' מספר הקו: ' + response.callNumber) : '';
+                                self.showSuccess('הקוד הוכן. נא להתקשר לקו לשמיעת הקוד.' + numberText);
+                                $('#verification-code-container').removeClass('hidden');
+                                $('#phoneNumber').prop('readonly', true);
+                                $btn.addClass('hidden');
+                                self.startResendTimer();
+                            } else {
+                                self.showError(response.message || 'שגיאה בשליחה');
+                                $btn.prop('disabled', false).html('<i class="fa fa-phone"></i> שלח לאימות');
+                            }
+                        },
+                        error: function() {
+                            self.showError('שגיאת תקשורת');
+                            $btn.prop('disabled', false).html('<i class="fa fa-phone"></i> שלח לאימות');
+                        }
+                    });
+                    return;
+                }
+
                 $.ajax({
                     url: config.relative_path + '/api/phone-verification/send-code',
                     method: 'POST',
@@ -149,6 +273,11 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                         $btn.prop('disabled', false).html('<i class="fa fa-phone"></i> שלח לאימות');
                     }
                 });
+            }
+
+            $('#send-code-btn').off('click').on('click', function () {
+                const method = self.getSelectedMethod();
+                requestVerification(method);
             });
 
             $('#verify-code-btn').off('click').on('click', function () {
@@ -178,11 +307,21 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                             } else {
                                 $('#phoneNumberVerified').val(phone);
                             }
+                            if (self.registerBtn && self.registerBtn.length) {
+                                self.registerBtn.prop('disabled', false);
+                            }
                         } else {
                             self.showError(response.message || 'קוד שגוי');
                         }
                     }
                 });
+            });
+
+            $('#resend-code-btn').off('click').on('click', function () {
+                if (self.resendCountdown > 0) return;
+                const method = self.getSelectedMethod();
+                $('#send-code-btn').removeClass('hidden');
+                requestVerification(method);
             });
 
             $('[component="register/local"]').off('submit.phone').on('submit.phone', function (e) {
@@ -259,7 +398,7 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                         <i class="fa fa-info-circle"></i> 
                         ${isVerified 
                             ? 'המספר הנוכחי מאומת. שינוי המספר יחייב אימות מחדש.' 
-                            : 'יש להזין מספר ולקבל צינתוק לאימות.'}
+                            : 'יש להזין מספר ולקבל אימות.'}
                     </div>
                 </div>
                 <div id="modal-alert-area"></div>
@@ -275,7 +414,7 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                     className: 'btn-ghost'
                 },
                 verify: {
-                    label: 'שלח צינתוק',
+                    label: 'המשך לאימות',
                     className: 'btn-primary',
                     callback: function() {
                         const newPhone = $('#modal-phoneNumber').val();
@@ -308,20 +447,14 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
         }, function(res) {
             if (!res.success) {
                 showModalAlert(res.message || res.error, 'danger');
-                $btn.prop('disabled', false).text('שלח צינתוק');
+                $btn.prop('disabled', false).text('המשך לאימות');
                 return;
             }
 
-            $.post(config.relative_path + '/api/phone-verification/send-code', { 
-                phoneNumber: phone,
-                _csrf: config.csrf_token 
-            }, function(callRes) {
-                if (callRes.success) {
-                    dialog.modal('hide'); 
-                    
-                    // עדכון ה-Prompt לקליטת 4 ספרות
+            loadPublicSettings().then(function(settings) {
+                function askForCode(title) {
                     bootbox.prompt({
-                        title: "הזן את 4 הספרות האחרונות של המספר שחייג אליך כעת",
+                        title: title,
                         inputType: 'number',
                         callback: function (code) {
                             if (!code) return;
@@ -339,9 +472,62 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                             });
                         }
                     });
+                }
+
+                function sendByMethod(method) {
+                    if (method === 'user-call') {
+                        $.post(config.relative_path + '/api/phone-verification/request-user-call', { 
+                            phoneNumber: phone,
+                            _csrf: config.csrf_token 
+                        }, function(callRes) {
+                            if (callRes.success) {
+                                dialog.modal('hide');
+                                var title = "התקשר לקו לשמיעת קוד האימות";
+                                if (callRes.callNumber) title += " (" + callRes.callNumber + ")";
+                                askForCode(title);
+                            } else {
+                                showModalAlert(callRes.message || 'שגיאה בהכנת הקוד', 'danger');
+                                $btn.prop('disabled', false).text('המשך לאימות');
+                            }
+                        });
+                        return;
+                    }
+
+                    $.post(config.relative_path + '/api/phone-verification/send-code', { 
+                        phoneNumber: phone,
+                        _csrf: config.csrf_token 
+                    }, function(callRes) {
+                        if (callRes.success) {
+                            dialog.modal('hide'); 
+                            askForCode("הזן את 4 הספרות האחרונות של המספר שחייג אליך כעת");
+                        } else {
+                            showModalAlert(callRes.message || 'שגיאה בשליחת הצינתוק', 'danger');
+                            $btn.prop('disabled', false).text('המשך לאימות');
+                        }
+                    });
+                }
+
+                if (settings.voiceServerEnabled && settings.userCallEnabled) {
+                    bootbox.dialog({
+                        title: 'בחר שיטת אימות',
+                        message: 'ניתן לבחור אימות בצינתוק או שיחה יזומה מצד המשתמש.',
+                        buttons: {
+                            tzintuk: {
+                                label: 'צינתוק',
+                                className: 'btn-primary',
+                                callback: function() { sendByMethod('tzintuk'); }
+                            },
+                            userCall: {
+                                label: 'שיחה יזומה',
+                                className: 'btn-success',
+                                callback: function() { sendByMethod('user-call'); }
+                            }
+                        }
+                    });
+                } else if (settings.userCallEnabled) {
+                    sendByMethod('user-call');
                 } else {
-                    showModalAlert(callRes.message || 'שגיאה בשליחת הצינתוק', 'danger');
-                    $btn.prop('disabled', false).text('שלח צינתוק');
+                    sendByMethod('tzintuk');
                 }
             });
         });

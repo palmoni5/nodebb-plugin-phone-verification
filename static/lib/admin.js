@@ -11,10 +11,127 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 
 		Settings.load('phone-verification', $('#voice-settings-form'));
 
+		function buildApiLink() {
+			var base = window.location.origin || '';
+			return base + config.relative_path + '/api/phone-verification/inbound-call';
+		}
+
+		function buildUserCallConfig(token) {
+			var apiLink = buildApiLink();
+			return [
+				'type=api',
+				'api_link=' + apiLink,
+				'api_hangup_send=no',
+				'api_add_0=token=' + token
+			].join('\n');
+		}
+
+		function showUserCallSetupModal(token, onConfirm) {
+			var configText = buildUserCallConfig(token);
+			var modalHtml =
+				'<div>' +
+					'<p>לשם ביצוע הפעולה יש להגדיר בקו שלכם בהגדרות השלוחה הראשית או השלוחה הרצויה לאימות את ההגדרות הבאות:</p>' +
+					'<div class="mb-2">' +
+						'<button type="button" class="btn btn-default btn-sm" id="copy-user-call-config">העתק</button>' +
+					'</div>' +
+					'<pre style="white-space: pre-wrap;"><code id="user-call-config">' + configText + '</code></pre>' +
+				'</div>';
+
+			var dialog = bootbox.dialog({
+				title: 'הגדרת שיחה יזומה',
+				message: modalHtml,
+				buttons: {
+					cancel: {
+						label: 'ביטול',
+						className: 'btn-ghost',
+						callback: function() {
+							if (typeof onConfirm === 'function') onConfirm(false);
+						}
+					},
+					ok: {
+						label: 'הגדרתי את הקו שיעביר להמשך',
+						className: 'btn-primary',
+						callback: function() {
+							if (typeof onConfirm === 'function') onConfirm(true);
+						}
+					}
+				}
+			});
+
+			dialog.on('shown.bs.modal', function() {
+				$('#copy-user-call-config').off('click').on('click', function() {
+					var text = $('#user-call-config').text();
+					if (navigator.clipboard && navigator.clipboard.writeText) {
+						navigator.clipboard.writeText(text).then(function() {
+							alerts.success('הועתק ללוח');
+						}).catch(function() {
+							alerts.error('לא ניתן להעתיק');
+						});
+					} else {
+						var $temp = $('<textarea>').val(text).appendTo('body').select();
+						try {
+							document.execCommand('copy');
+							alerts.success('הועתק ללוח');
+						} catch (e) {
+							alerts.error('לא ניתן להעתיק');
+						}
+						$temp.remove();
+					}
+				});
+			});
+		}
+
 		$('#save-settings-btn').on('click', function(e) {
 			e.preventDefault();
 			Settings.save('phone-verification', $('#voice-settings-form'), function() {
 				alerts.success('ההגדרות נשמרו בהצלחה!');
+			});
+		});
+
+		$('#userCallEnabled').on('change', function() {
+			var $checkbox = $(this);
+			if (!$checkbox.is(':checked')) return;
+
+			var token = $('#callApiToken').val();
+			if (!token) {
+				$.post(config.relative_path + '/api/admin/plugins/phone-verification/refresh-token', { _csrf: config.csrf_token }, function(res) {
+					if (res && res.success && res.token) {
+						$('#callApiToken').val(res.token);
+						showUserCallSetupModal(res.token, function(confirmed) {
+							if (!confirmed) {
+								$checkbox.prop('checked', false);
+							}
+						});
+					} else {
+						alerts.error('שגיאה ביצירת טוקן');
+						$checkbox.prop('checked', false);
+					}
+				});
+				return;
+			}
+
+			showUserCallSetupModal(token, function(confirmed) {
+				if (!confirmed) {
+					$checkbox.prop('checked', false);
+				}
+			});
+		});
+
+		$('#refresh-call-token-btn').on('click', function() {
+			bootbox.confirm({
+				title: 'רענון טוקן',
+				message: 'אחרי הרענון יש לעדכן את הגדרות השלוחה בקו. האם להמשיך?',
+				callback: function(result) {
+					if (!result) return;
+					$.post(config.relative_path + '/api/admin/plugins/phone-verification/refresh-token', { _csrf: config.csrf_token }, function(res) {
+						if (res && res.success && res.token) {
+							$('#callApiToken').val(res.token);
+							alerts.success('הטוקן עודכן');
+						} else {
+							alerts.error('שגיאה ברענון הטוקן');
+						}
+					});
+				}
 			});
 		});
 

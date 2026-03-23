@@ -29,6 +29,9 @@ const defaultSettings = {
     voiceServerUrl: 'https://www.call2all.co.il/ym/api/RunTzintuk', 
     voiceServerApiKey: '',
     voiceServerEnabled: false,
+    userCallEnabled: false,
+    userCallNumber: '',
+    callApiToken: '',
     blockUnverifiedUsers: false,
     // הוסרו הגדרות TTS שאינן רלוונטיות לצינתוק
 };
@@ -49,6 +52,20 @@ plugin.normalizePhone = function (phone) {
 
 plugin.hashCode = function (code) {
     return crypto.createHash('sha256').update(code).digest('hex');
+};
+
+plugin.generateApiToken = function () {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const bytes = crypto.randomBytes(16);
+    let token = '';
+    for (let i = 0; i < 16; i++) {
+        token += chars[bytes[i] % chars.length];
+    }
+    return token;
+};
+
+plugin.generateNumericCode = function () {
+    return String(Math.floor(1000 + Math.random() * 9000));
 };
 
 // ==================== בדיקת הרשאות ====================
@@ -189,7 +206,7 @@ plugin.sendTzintuk = async function (phone) {
 
 // ==================== ניהול נתונים (Redis) ====================
 
-plugin.saveVerificationCode = async function (phone, code) {
+plugin.saveVerificationCode = async function (phone, code, options = {}) {
     const normalizedPhone = plugin.normalizePhone(phone);
     const now = Date.now();
     const expiresAt = now + (CODE_EXPIRY_MINUTES * 60 * 1000);
@@ -203,6 +220,9 @@ plugin.saveVerificationCode = async function (phone, code) {
     }
     
     const data = { hashedCode: plugin.hashCode(code), attempts: 0, createdAt: now, expiresAt: expiresAt, blockedUntil: 0 };
+    if (options.storePlain === true) {
+        data.plainCode = String(code);
+    }
     await db.setObject(key, data);
     await db.pexpireAt(key, now + (20 * 60 * 1000));
     return { success: true, expiresAt };
@@ -275,6 +295,23 @@ plugin.isPhoneVerified = async function (phone) {
 plugin.clearVerifiedPhone = async function (phone) {
     const normalizedPhone = plugin.normalizePhone(phone);
     if (db) await db.delete(`phone-verification:verified:${normalizedPhone}`);
+};
+
+plugin.getPendingPlainCode = async function (phone) {
+    const normalizedPhone = plugin.normalizePhone(phone);
+    const now = Date.now();
+    const key = `${REDIS_PREFIX}${normalizedPhone}`;
+    if (!db) return { success: false, error: 'DB_ERROR' };
+    const data = await db.getObject(key);
+    if (!data) return { success: false, error: 'CODE_NOT_FOUND' };
+    if (data.blockedUntil && parseInt(data.blockedUntil, 10) > now) {
+        return { success: false, error: 'PHONE_BLOCKED' };
+    }
+    if (parseInt(data.expiresAt, 10) < now) {
+        return { success: false, error: 'CODE_EXPIRED' };
+    }
+    if (!data.plainCode) return { success: false, error: 'CODE_UNAVAILABLE' };
+    return { success: true, code: String(data.plainCode) };
 };
 
 // ==================== DB Users Logic ====================
@@ -368,13 +405,19 @@ plugin.checkRegistration = async function (data) {
     try {
         const phoneNumber = data.req.body.phoneNumber;
         const req = data.req;
-        const res = data.res;
+        // const res = data.res;
 
         if (!phoneNumber) {
             throw new Error('חובה להזין מספר טלפון');
         }
         
         const normalizedPhone = plugin.normalizePhone(phoneNumber);
+
+        const isVerified = await plugin.isPhoneVerified(normalizedPhone);
+        if (!isVerified) {
+            throw new Error('מספר הטלפון לא אומת. יש ללחוץ על "שלח לאימות" ולהזין את הקוד לפני סיום ההרשמה.');
+        }
+
         const existingUid = await plugin.findUserByPhone(normalizedPhone);
         
         if (existingUid) {
@@ -505,6 +548,9 @@ plugin.init = async function (params) {
     router.post('/api/phone-verification/verify-code', middleware.applyCSRF, plugin.apiVerifyCode);
     router.post('/api/phone-verification/initiate-call', middleware.applyCSRF, plugin.apiInitiateCall);
     router.post('/api/phone-verification/check-status', middleware.applyCSRF, plugin.apiCheckStatus);
+    router.post('/api/phone-verification/request-user-call', middleware.applyCSRF, plugin.apiRequestUserCall);
+    router.get('/api/phone-verification/inbound-call', plugin.apiInboundCall);
+    router.get('/api/phone-verification/public-settings', plugin.apiGetPublicSettings);
     
     // User Profile APIs
     router.get('/api/user/:userslug/phone', middleware.authenticateRequest, plugin.apiGetUserPhoneProfile);
@@ -521,6 +567,7 @@ plugin.init = async function (params) {
     router.get('/api/admin/plugins/phone-verification/settings', middleware.admin.checkPrivileges, plugin.apiAdminGetSettings);
     router.post('/api/admin/plugins/phone-verification/settings', middleware.admin.checkPrivileges, middleware.applyCSRF, plugin.apiAdminSaveSettings);
     router.post('/api/admin/plugins/phone-verification/test-call', middleware.admin.checkPrivileges, middleware.applyCSRF, plugin.apiAdminTestCall);
+    router.post('/api/admin/plugins/phone-verification/refresh-token', middleware.admin.checkPrivileges, middleware.applyCSRF, plugin.apiAdminRefreshToken);
 };
 plugin.apiCheckStatus = async function (req, res) {
     try {
@@ -534,10 +581,19 @@ plugin.getSettings = async function () {
     
     const isTrue = (val) => val === true || val === 'true' || val === 'on' || val === '1';
 
+    if (!settings.callApiToken) {
+        const newToken = plugin.generateApiToken();
+        await meta.settings.set('phone-verification', { ...settings, callApiToken: newToken });
+        settings.callApiToken = newToken;
+    }
+
     return {
         voiceServerUrl: settings.voiceServerUrl || defaultSettings.voiceServerUrl,
         voiceServerApiKey: settings.voiceServerApiKey || '',
         voiceServerEnabled: isTrue(settings.voiceServerEnabled),
+        userCallEnabled: isTrue(settings.userCallEnabled),
+        userCallNumber: settings.userCallNumber || '',
+        callApiToken: settings.callApiToken || '',
         blockUnverifiedUsers: isTrue(settings.blockUnverifiedUsers)
     };
 };
@@ -548,6 +604,9 @@ plugin.saveSettings = async function (settings) {
         voiceServerUrl: settings.voiceServerUrl || defaultSettings.voiceServerUrl,
         voiceServerApiKey: settings.voiceServerApiKey || '',
         voiceServerEnabled: settings.voiceServerEnabled ? 'true' : 'false',
+        userCallEnabled: settings.userCallEnabled ? 'true' : 'false',
+        userCallNumber: settings.userCallNumber || '',
+        callApiToken: settings.callApiToken || '',
         blockUnverifiedUsers: settings.blockUnverifiedUsers ? 'true' : 'false'
     });
     return true;
@@ -564,11 +623,21 @@ plugin.apiAdminGetSettings = async function (req, res) {
 
 plugin.apiAdminSaveSettings = async function (req, res) {
     try {
-        const { voiceServerApiKey, ...rest } = req.body;
+        const { voiceServerApiKey, callApiToken, ...rest } = req.body;
         const current = await plugin.getSettings();
         const apiKey = voiceServerApiKey === '********' ? current.voiceServerApiKey : voiceServerApiKey;
-        await plugin.saveSettings({ ...rest, voiceServerApiKey: apiKey });
+        const tokenToSave = callApiToken || current.callApiToken;
+        await plugin.saveSettings({ ...rest, voiceServerApiKey: apiKey, callApiToken: tokenToSave });
         res.json({ success: true });
+    } catch (err) { res.json({ success: false }); }
+};
+
+plugin.apiAdminRefreshToken = async function (req, res) {
+    try {
+        const current = await plugin.getSettings();
+        const newToken = plugin.generateApiToken();
+        await plugin.saveSettings({ ...current, callApiToken: newToken });
+        res.json({ success: true, token: newToken });
     } catch (err) { res.json({ success: false }); }
 };
 
@@ -612,6 +681,40 @@ plugin.apiSendCode = async function (req, res) {
              res.json({ success: false, message: result.message || 'תקלה בשליחת הצינתוק' });
         }
         
+    } catch (err) { 
+        console.error(err);
+        res.json({ success: false }); 
+    }
+};
+
+plugin.apiRequestUserCall = async function (req, res) {
+    try {
+        const { phoneNumber } = req.body;
+        if (!phoneNumber) return res.json({ success: false, error: 'MISSING' });
+
+        const settings = await plugin.getSettings();
+        if (!settings.userCallEnabled) {
+            return res.json({ success: false, error: 'CALL_DISABLED', message: 'אימות בשיחה יזומה אינו פעיל' });
+        }
+
+        const clientIp = req.ip || req.headers['x-forwarded-for'];
+        const ipCheck = await plugin.checkIpRateLimit(clientIp);
+        if (!ipCheck.allowed) return res.json(ipCheck);
+        await plugin.incrementIpCounter(clientIp);
+
+        const clean = plugin.normalizePhone(phoneNumber.replace(/\D/g, ''));
+        if (!plugin.validatePhoneNumber(clean)) return res.json({ success: false, error: 'INVALID' });
+
+        const existingUid = await plugin.findUserByPhone(clean);
+        if (existingUid && (!req.uid || parseInt(existingUid) !== parseInt(req.uid))) {
+            return res.json({ success: false, error: 'EXISTS', message: 'המספר תפוס' });
+        }
+
+        const code = plugin.generateNumericCode();
+        const saveResult = await plugin.saveVerificationCode(clean, code, { storePlain: true });
+        if (!saveResult.success) return res.json(saveResult);
+
+        res.json({ success: true, message: 'הקוד הוכן. נא להתקשר לקו לצורך שמיעת הקוד.', callNumber: settings.userCallNumber || '' });
     } catch (err) { 
         console.error(err);
         res.json({ success: false }); 
@@ -668,6 +771,49 @@ plugin.apiInitiateCall = async function (req, res) {
         
     } catch (err) {
         res.json({ success: false, error: 'SERVER_ERROR', message: 'אירעה שגיאה' });
+    }
+};
+
+plugin.apiInboundCall = async function (req, res) {
+    try {
+        const settings = await plugin.getSettings();
+        const token = req.query.token;
+        const phone = req.query.ApiPhone;
+
+        if (!token || token !== settings.callApiToken) {
+            return res.status(403).send('forbidden');
+        }
+        if (!phone || !plugin.validatePhoneNumber(phone)) {
+            return res.status(400).send('invalid');
+        }
+
+        const pending = await plugin.getPendingPlainCode(phone);
+        if (!pending.success) {
+            return res.status(404).send('not found');
+        }
+
+        const code = pending.code;
+        const payload = `read=t-הקוד שלכם החד פעמי הוא.d-${code}.t-לשמיעה חוזרת הַקִּישׁוּ1=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
+        res.set('Content-Type', 'text/plain; charset=utf-8');
+        res.send(payload);
+    } catch (err) {
+        res.status(500).send('error');
+    }
+};
+
+plugin.apiGetPublicSettings = async function (req, res) {
+    try {
+        const settings = await plugin.getSettings();
+        res.json({
+            success: true,
+            settings: {
+                voiceServerEnabled: settings.voiceServerEnabled,
+                userCallEnabled: settings.userCallEnabled,
+                userCallNumber: settings.userCallNumber || ''
+            }
+        });
+    } catch (e) {
+        res.json({ success: false });
     }
 };
 

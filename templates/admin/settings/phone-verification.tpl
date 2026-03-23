@@ -14,9 +14,36 @@
                         <div class="form-group">
                             <label for="voiceServerEnabled">
                                 <input type="checkbox" id="voiceServerEnabled" name="voiceServerEnabled" />
-                                הפעל אימות בצינתוק
+                                אימות ע"י צינתוק (0.1 יחידות)
                             </label>
                             <p class="help-block">כאשר מופעל, התוסף ישלח צינתוק (שיחה מנותקת) למשתמש, שיצטרך לאמת את 4 הספרות האחרונות של המספר המתקשר.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="userCallEnabled">
+                                <input type="checkbox" id="userCallEnabled" name="userCallEnabled" />
+                                אימות ע"י שיחה יזומה מצד המשתמש (חינם)
+                            </label>
+                            <p class="help-block">כאשר מופעל, המשתמש יקבל קוד אימות לאחר שיתקשר לקו שלכם.</p>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="userCallNumber">מספר הקו שיוצג למשתמשים</label>
+                            <input type="text" class="form-control" id="userCallNumber" name="userCallNumber"
+                                   placeholder="לדוגמה: 03-1234567" dir="ltr" />
+                        </div>
+
+                        <div class="form-group">
+                            <label for="callApiToken">טוקן ייחודי לפורום</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control" id="callApiToken" name="callApiToken" readonly dir="ltr" />
+                                <span class="input-group-btn">
+                                    <button type="button" class="btn btn-default" id="refresh-call-token-btn">
+                                        <i class="fa fa-refresh"></i> רענן טוקן
+                                    </button>
+                                </span>
+                            </div>
+                            <p class="help-block">טוקן זה משמש לזיהוי הקו שלכם ב־API.</p>
                         </div>
                         
                         <div class="form-group">
