@@ -817,19 +817,32 @@ plugin.apiInboundCall = async function (req, res) {
         const phone = req.query.ApiPhone;
 
         if (!token || token !== settings.callApiToken) {
-            const errorPayload = 'read=t-אירעה שגיאה בתהליך או שהנתונים שגויים. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+            const errorPayload = 'read=t-שגיאת הרשאה - הטוקן אינו תקין. אנא פנו למנהל המערכת. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(403).send(errorPayload);
         }
         if (!phone || !plugin.validatePhoneNumber(phone)) {
-            const errorPayload = 'read=t-אירעה שגיאה בתהליך או שהנתונים שגויים. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+            const errorPayload = 'read=t-מספר הטלפון אינו תקין או חסר. אנא פנו למנהל המערכת. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(400).send(errorPayload);
         }
 
         const pending = await plugin.getPendingPlainCode(phone);
         if (!pending.success) {
-            const errorPayload = 'read=t-אירעה שגיאה בתהליך או שהנתונים שגויים. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+            let errorMessage = 'קוד האימות לא נמצא או פג תוקפו';
+            
+            // הודעות ספציפיות לפי סוג השגיאה
+            if (pending.error === 'CODE_EXPIRED') {
+                errorMessage = 'פג תוקף קוד האימות';
+            } else if (pending.error === 'PHONE_BLOCKED') {
+                errorMessage = 'המספר חסום זמנית';
+            } else if (pending.error === 'CODE_UNAVAILABLE') {
+                errorMessage = 'הקוד אינו זמין כרגע';
+            } else if (pending.error === 'DB_ERROR') {
+                errorMessage = 'שגיאה במסד הנתונים';
+            }
+            
+            const errorPayload = `read=t-${errorMessage}. אנא פנו למנהל המערכת. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(404).send(errorPayload);
         }
@@ -839,7 +852,7 @@ plugin.apiInboundCall = async function (req, res) {
         res.set('Content-Type', 'text/plain; charset=utf-8');
         res.send(payload);
     } catch (err) {
-        const errorPayload = 'read=t-אירעה שגיאה בתהליך או שהנתונים שגויים. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+        const errorPayload = 'read=t-שגיאה כללית במערכת. אנא פנו למנהל המערכת. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
         res.set('Content-Type', 'text/plain; charset=utf-8');
         res.status(500).send(errorPayload);
     }
