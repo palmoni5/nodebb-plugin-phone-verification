@@ -817,12 +817,12 @@ plugin.apiInboundCall = async function (req, res) {
         const phone = req.query.ApiPhone;
 
         if (!token || token !== settings.callApiToken) {
-            const errorPayload = 'read=t-שגיאת הרשאה - הטוקן אינו תקין. אנא פנו למנהל המערכת. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+            const errorPayload = 'read=t-שגיאת הרשאה - הטוקן אינו תקין, אנא פנו למנהל המערכת, לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(403).send(errorPayload);
         }
         if (!phone || !plugin.validatePhoneNumber(phone)) {
-            const errorPayload = 'read=t-מספר הטלפון אינו תקין או חסר. אנא פנו למנהל המערכת. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+            const errorPayload = 'read=t-מספר הטלפון אינו תקין או חסר, אנא פנו למנהל המערכת, לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(400).send(errorPayload);
         }
@@ -842,7 +842,7 @@ plugin.apiInboundCall = async function (req, res) {
                 errorMessage = 'שגיאה במסד הנתונים';
             }
             
-            const errorPayload = `read=t-${errorMessage}. אנא פנו למנהל המערכת. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
+            const errorPayload = `read=t-${errorMessage}, אנא פנו למנהל המערכת, לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(404).send(errorPayload);
         }
@@ -852,7 +852,7 @@ plugin.apiInboundCall = async function (req, res) {
         res.set('Content-Type', 'text/plain; charset=utf-8');
         res.send(payload);
     } catch (err) {
-        const errorPayload = 'read=t-שגיאה כללית במערכת. אנא פנו למנהל המערכת. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+        const errorPayload = 'read=t-שגיאה כללית במערכת, אנא פנו למנהל המערכת, לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
         res.set('Content-Type', 'text/plain; charset=utf-8');
         res.status(500).send(errorPayload);
     }
