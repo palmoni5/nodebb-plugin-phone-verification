@@ -567,6 +567,7 @@ plugin.init = async function (params) {
     router.get('/api/admin/plugins/phone-verification/settings', middleware.admin.checkPrivileges, plugin.apiAdminGetSettings);
     router.post('/api/admin/plugins/phone-verification/settings', middleware.admin.checkPrivileges, middleware.applyCSRF, plugin.apiAdminSaveSettings);
     router.post('/api/admin/plugins/phone-verification/test-call', middleware.admin.checkPrivileges, middleware.applyCSRF, plugin.apiAdminTestCall);
+    router.post('/api/admin/plugins/phone-verification/test-user-call', middleware.admin.checkPrivileges, middleware.applyCSRF, plugin.apiAdminTestUserCall);
     router.post('/api/admin/plugins/phone-verification/refresh-token', middleware.admin.checkPrivileges, middleware.applyCSRF, plugin.apiAdminRefreshToken);
 };
 plugin.apiCheckStatus = async function (req, res) {
@@ -650,6 +651,41 @@ plugin.apiAdminTestCall = async function (req, res) {
         const result = await plugin.sendTzintuk(plugin.normalizePhone(phoneNumber));
         res.json(result);
     } catch (err) { res.json({ success: false }); }
+};
+
+plugin.apiAdminTestUserCall = async function (req, res) {
+    try {
+        const { phoneNumber } = req.body;
+        if (!phoneNumber) return res.json({ success: false, message: 'חסר טלפון' });
+        
+        const settings = await plugin.getSettings();
+        if (!settings.userCallEnabled) {
+            return res.json({ success: false, message: 'אימות בשיחה יזומה אינו פעיל' });
+        }
+
+        const clean = plugin.normalizePhone(phoneNumber);
+        if (!plugin.validatePhoneNumber(clean)) {
+            return res.json({ success: false, message: 'מספר טלפון לא תקין' });
+        }
+
+        // יצירת קוד אימות זמני לבדיקה
+        const code = plugin.generateNumericCode();
+        const saveResult = await plugin.saveVerificationCode(clean, code, { storePlain: true });
+        
+        if (!saveResult.success) {
+            return res.json({ success: false, message: 'שגיאה בשמירת קוד האימות' });
+        }
+
+        res.json({ 
+            success: true, 
+            code: code,
+            phoneNumber: settings.userCallNumber || 'לא הוגדר',
+            message: 'קוד אימות נוצר בהצלחה לבדיקה'
+        });
+    } catch (err) { 
+        console.error(err);
+        res.json({ success: false, message: 'שגיאה ביצירת קוד האימות' }); 
+    }
 };
 
 plugin.apiSendCode = async function (req, res) {
