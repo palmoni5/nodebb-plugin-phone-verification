@@ -781,23 +781,31 @@ plugin.apiInboundCall = async function (req, res) {
         const phone = req.query.ApiPhone;
 
         if (!token || token !== settings.callApiToken) {
-            return res.status(403).send('forbidden');
+            const errorPayload = 'read=t-אירעה שגיאה בתהליך או שהנתונים שגויים. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+            res.set('Content-Type', 'text/plain; charset=utf-8');
+            return res.status(403).send(errorPayload);
         }
         if (!phone || !plugin.validatePhoneNumber(phone)) {
-            return res.status(400).send('invalid');
+            const errorPayload = 'read=t-אירעה שגיאה בתהליך או שהנתונים שגויים. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+            res.set('Content-Type', 'text/plain; charset=utf-8');
+            return res.status(400).send(errorPayload);
         }
 
         const pending = await plugin.getPendingPlainCode(phone);
         if (!pending.success) {
-            return res.status(404).send('not found');
+            const errorPayload = 'read=t-אירעה שגיאה בתהליך או שהנתונים שגויים. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+            res.set('Content-Type', 'text/plain; charset=utf-8');
+            return res.status(404).send(errorPayload);
         }
 
         const code = pending.code;
-        const payload = `read=t-הקוד שלכם החד פעמי הוא.d-${code}.t-לשמיעה חוזרת הַקִּישׁוּ1=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
+        const payload = `read=t-הקוד שלכם החד פעמי הוא.d-${code}.t-לשמיעה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
         res.set('Content-Type', 'text/plain; charset=utf-8');
         res.send(payload);
     } catch (err) {
-        res.status(500).send('error');
+        const errorPayload = 'read=t-אירעה שגיאה בתהליך או שהנתונים שגויים. לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+        res.set('Content-Type', 'text/plain; charset=utf-8');
+        res.status(500).send(errorPayload);
     }
 };
 
