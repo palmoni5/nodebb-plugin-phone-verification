@@ -1,12 +1,16 @@
 {
     "name": "nodebb-plugin-phone-verification",
-    "version": "3.0.2",
-    "description": "אימות מספר טלפון נייד בתהליך ההרשמה לפורום NodeBB",
+    "version": "3.0.3",
+    "description": "Phone number verification for NodeBB registration and user profiles",
     "main": "library.js",
     "repository": {
         "type": "git",
-        "url": ""
+        "url": "https://github.com/palmoni5/nodebb-plugin-phone-verification.git"
     },
+    "bugs": {
+        "url": "https://github.com/palmoni5/nodebb-plugin-phone-verification/issues"
+    },
+    "homepage": "https://github.com/palmoni5/nodebb-plugin-phone-verification#readme",
     "keywords": [
         "nodebb",
         "plugin",
@@ -14,7 +18,7 @@
         "verification",
         "registration"
     ],
-    "author": "",
+    "author": "palmoni5",
     "license": "MIT",
     "nbbpm": {
         "compatibility": "^3.0.0 || ^4.0.0"
