@@ -3,7 +3,20 @@
 const crypto = require('crypto');
 const https = require('https');
 const nconf = require.main.require('nconf');
-const translator = require.main.require('./src/translator');
+let translator;
+try {
+    translator = require.main.require('./src/translator');
+} catch (err) {
+    translator = {
+        compile: function (key) {
+            const args = Array.prototype.slice.call(arguments, 1);
+            return args.length ? `[[${key}, ${args.join(', ')}]]` : `[[${key}]]`;
+        },
+        translate: async function (str) {
+            return str;
+        },
+    };
+}
 
 // NodeBB modules
 let db;
@@ -13,7 +26,7 @@ let SocketPlugins;
 
 const plugin = {};
 
-// קבועים
+// Constants
 const CODE_EXPIRY_MINUTES = 5;
 const MAX_ATTEMPTS = 3;
 const BLOCK_DURATION_MINUTES = 15;
@@ -24,9 +37,9 @@ const IP_RATE_LIMIT_PREFIX = 'phone-verification:ip:';
 const MAX_REQUESTS_PER_IP = 10;
 const IP_BLOCK_HOURS = 24;
 
-// ==================== הגדרות ברירת מחדל ====================
+// ==================== Default settings ====================
 const defaultSettings = {
-    // עודכן לכתובת הצינתוקים
+    // Default Call2All tzintuk endpoint
     voiceServerUrl: 'https://www.call2all.co.il/ym/api/RunTzintuk', 
     voiceServerApiKey: '',
     voiceServerEnabled: false,
@@ -34,10 +47,10 @@ const defaultSettings = {
     userCallNumber: '',
     callApiToken: '',
     blockUnverifiedUsers: false,
-    // הוסרו הגדרות TTS שאינן רלוונטיות לצינתוק
+    // TTS-specific settings are intentionally omitted for tzintuk mode
 };
 
-// ==================== פונקציות עזר ====================
+// ==================== Helper functions ====================
 
 plugin.validatePhoneNumber = function (phone) {
     if (!phone || typeof phone !== 'string') return false;
@@ -69,7 +82,34 @@ plugin.generateNumericCode = function () {
     return String(Math.floor(1000 + Math.random() * 9000));
 };
 
-// ==================== בדיקת הרשאות ====================
+plugin.tx = function (key) {
+    const args = Array.prototype.slice.call(arguments, 1);
+    return translator.compile.apply(translator, [`phone-verification:${key}`].concat(args));
+};
+
+plugin.translateFor = async function (language, key) {
+    const args = Array.prototype.slice.call(arguments, 2);
+    return await translator.translate(plugin.tx.apply(plugin, [key].concat(args)), language);
+};
+
+plugin.getDefaultLanguage = async function () {
+    if (!meta) {
+        meta = require.main.require('./src/meta');
+    }
+    return (meta && meta.config && meta.config.defaultLang) || 'en-GB';
+};
+
+plugin.getRequestLanguage = async function (req) {
+    if (req && req.uid) {
+        const userLang = await User.getUserField(req.uid, 'userLang');
+        if (userLang) {
+            return userLang;
+        }
+    }
+    return await plugin.getDefaultLanguage();
+};
+
+// ==================== Permission checks ====================
 
 plugin.checkPostingPermissions = async function (data) {
     const uid = data.uid || (data.post && data.post.uid) || (data.topic && data.topic.uid);
@@ -86,7 +126,7 @@ plugin.checkPostingPermissions = async function (data) {
         const userSlug = await User.getUserField(uid, 'userslug');
         const relativePath = nconf.get('relative_path');
         const editUrl = userSlug ? `${relativePath}/user/${userSlug}/edit` : `${relativePath}/user/me/edit`;
-        throw new Error(`חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`);
+        throw new Error(plugin.tx('error.verify-to-participate', editUrl));
     }
     return data;
 };
@@ -106,7 +146,7 @@ plugin.checkVotingPermissions = async function (data) {
         const userSlug = await User.getUserField(uid, 'userslug');
         const relativePath = nconf.get('relative_path');
         const editUrl = userSlug ? `${relativePath}/user/${userSlug}/edit` : `${relativePath}/user/me/edit`;
-        throw new Error(`חובה לאמת מספר טלפון כדי להמשיך את הפעילות בפורום.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`);
+        throw new Error(plugin.tx('error.verify-to-participate', editUrl));
     }
     return data;
 };
@@ -138,7 +178,7 @@ plugin.checkMessagingPermissions = async function (data) {
     const userSlug = await User.getUserField(uid, 'userslug');
     const relativePath = nconf.get('relative_path');
     const editUrl = userSlug ? `${relativePath}/user/${userSlug}/edit` : `${relativePath}/user/me/edit`;
-    const errorMsg = `חובה לאמת מספר טלפון כדי לשלוח הודעות.<br/>אנא גש ל<a href="${editUrl}">הגדרות הפרופיל שלך</a>.`;
+    const errorMsg = plugin.tx('error.verify-to-message', editUrl);
 
     if (targetUids.length === 0) {
         throw new Error(errorMsg);
@@ -154,24 +194,24 @@ plugin.checkMessagingPermissions = async function (data) {
     return data;
 };
 
-// ==================== שליחת צינתוק (Tzintuk) ====================
+// ==================== Tzintuk delivery ====================
 
 plugin.sendTzintuk = async function (phone) {
     const settings = await plugin.getSettings();
 
     if (!settings.voiceServerEnabled || !settings.voiceServerApiKey) {
-        return { success: false, error: 'VOICE_SERVER_DISABLED', message: 'שרת השיחות לא מוגדר' };
+        return { success: false, error: 'VOICE_SERVER_DISABLED', message: plugin.tx('error.call-server-disabled') };
     }
 
     try {
         const baseUrl = settings.voiceServerUrl || defaultSettings.voiceServerUrl;
         
-        // פרמטרים לצינתוק עם זיהוי רנדומלי
+        // Tzintuk parameters with a random caller ID
         const params = new URLSearchParams({
             token: settings.voiceServerApiKey,
             phones: phone,
-            callerId: 'RAND', // חובה עבור קבלת קוד אימות אוטומטי
-            // tzintukTimeOut: '9' // אופציונלי
+            callerId: 'RAND', // Required for automatic verification-code delivery
+            // tzintukTimeOut: '9' // Optional
         });
 
         const url = `${baseUrl}?${params.toString()}`;
@@ -180,32 +220,32 @@ plugin.sendTzintuk = async function (phone) {
         
         const response = await fetch(url, { method: 'GET', agent: agent });
 
-        if (!response.ok) return { success: false, error: 'VOICE_SERVER_ERROR', message: 'שגיאה בשרת השיחות' };
+        if (!response.ok) return { success: false, error: 'VOICE_SERVER_ERROR', message: plugin.tx('error.call-server-response') };
         
         const result = await response.json();
         
-        // בדיקת תקינות התגובה וקיום verifyCode
+        // Validate the response and confirm verifyCode exists
         if (result.responseStatus === 'OK' && result.verifyCode) {
             return { 
                 success: true, 
-                code: result.verifyCode, // מחזירים את הקוד שהתקבל מהשרת
-                message: 'השיחה נשלחה בהצלחה'
+                code: result.verifyCode, // Return the code produced by the remote server
+                message: plugin.tx('success.call-sent')
             };
         } else if (result.errors && Object.keys(result.errors).length > 0) {
-             // טיפול בשגיאות ספציפיות
+             // Surface the first API error
              const errorKey = Object.keys(result.errors)[0];
              const errorMsg = result.errors[errorKey];
-             return { success: false, error: 'API_ERROR', message: `שגיאה: ${errorMsg}` };
+             return { success: false, error: 'API_ERROR', message: plugin.tx('error.api', errorMsg) };
         } else {
-            return { success: false, error: 'VOICE_SERVER_ERROR', message: result.message || 'שגיאה בשליחת השיחה' };
+            return { success: false, error: 'VOICE_SERVER_ERROR', message: result.message || plugin.tx('error.call-send-failed') };
         }
     } catch (err) {
         console.error(err);
-        return { success: false, error: 'VOICE_SERVER_ERROR', message: 'שגיאת תקשורת' };
+        return { success: false, error: 'VOICE_SERVER_ERROR', message: plugin.tx('error.network') };
     }
 };
 
-// ==================== ניהול נתונים (Redis) ====================
+// ==================== Redis-backed state ====================
 
 plugin.saveVerificationCode = async function (phone, code, options = {}) {
     const normalizedPhone = plugin.normalizePhone(phone);
@@ -217,12 +257,15 @@ plugin.saveVerificationCode = async function (phone, code, options = {}) {
     
     const existing = await db.getObject(key);
     if (existing && existing.blockedUntil && parseInt(existing.blockedUntil, 10) > now) {
-        return { success: false, error: 'PHONE_BLOCKED', message: 'המספר חסום זמנית' };
+        return { success: false, error: 'PHONE_BLOCKED', message: plugin.tx('error.phone-blocked') };
     }
     
     const data = { hashedCode: plugin.hashCode(code), attempts: 0, createdAt: now, expiresAt: expiresAt, blockedUntil: 0 };
     if (options.storePlain === true) {
         data.plainCode = String(code);
+    }
+    if (options.language) {
+        data.language = String(options.language);
     }
     await db.setObject(key, data);
     await db.pexpireAt(key, now + (20 * 60 * 1000));
@@ -237,11 +280,11 @@ plugin.verifyCode = async function (phone, code) {
     if (!db) return { success: false, error: 'DB_ERROR' };
     const data = await db.getObject(key);
     
-    if (!data) return { success: false, error: 'CODE_NOT_FOUND', message: 'לא נמצאה בקשת אימות' };
+    if (!data) return { success: false, error: 'CODE_NOT_FOUND', message: plugin.tx('error.code-request-not-found') };
     if (data.blockedUntil && parseInt(data.blockedUntil, 10) > now) {
-        return { success: false, error: 'PHONE_BLOCKED', message: 'המספר חסום זמנית' };
+        return { success: false, error: 'PHONE_BLOCKED', message: plugin.tx('error.phone-blocked') };
     }
-    if (parseInt(data.expiresAt, 10) < now) return { success: false, error: 'CODE_EXPIRED', message: 'הזמן לאימות עבר' };
+    if (parseInt(data.expiresAt, 10) < now) return { success: false, error: 'CODE_EXPIRED', message: plugin.tx('error.code-expired') };
     
     if (plugin.hashCode(code) === data.hashedCode) {
         await db.delete(key);
@@ -253,10 +296,10 @@ plugin.verifyCode = async function (phone, code) {
         const blockedUntil = now + (BLOCK_DURATION_MINUTES * 60 * 1000);
         await db.setObjectField(key, 'blockedUntil', blockedUntil);
         await db.setObjectField(key, 'attempts', attempts);
-        return { success: false, error: 'PHONE_BLOCKED', message: 'יותר מדי ניסיונות שגויים' };
+        return { success: false, error: 'PHONE_BLOCKED', message: plugin.tx('error.too-many-attempts') };
     }
     await db.setObjectField(key, 'attempts', attempts);
-    return { success: false, error: 'CODE_INVALID', message: 'קוד שגוי' };
+    return { success: false, error: 'CODE_INVALID', message: plugin.tx('error.code-invalid') };
 };
 
 plugin.checkIpRateLimit = async function (ip) {
@@ -264,7 +307,7 @@ plugin.checkIpRateLimit = async function (ip) {
     const key = `${IP_RATE_LIMIT_PREFIX}${ip}`;
     const count = await db.get(key);
     if (count && parseInt(count, 10) >= MAX_REQUESTS_PER_IP) {
-        return { allowed: false, error: 'IP_BLOCKED', message: 'חסימת IP זמנית' };
+        return { allowed: false, error: 'IP_BLOCKED', message: plugin.tx('error.ip-blocked') };
     }
     return { allowed: true };
 };
@@ -312,7 +355,7 @@ plugin.getPendingPlainCode = async function (phone) {
         return { success: false, error: 'CODE_EXPIRED' };
     }
     if (!data.plainCode) return { success: false, error: 'CODE_UNAVAILABLE' };
-    return { success: true, code: String(data.plainCode) };
+    return { success: true, code: String(data.plainCode), language: data.language || '' };
 };
 
 // ==================== DB Users Logic ====================
@@ -347,7 +390,7 @@ plugin.savePhoneToUser = async function (uid, phone, verified = true, forceOverr
                 });
                 await db.sortedSetRemove('users:phone', existingUid);
             } else {
-                return { success: false, error: 'PHONE_EXISTS', message: 'המספר כבר רשום למשתמש אחר' };
+                return { success: false, error: 'PHONE_EXISTS', message: plugin.tx('error.phone-exists-other') };
             }
         }
     }
@@ -409,21 +452,21 @@ plugin.checkRegistration = async function (data) {
         // const res = data.res;
 
         if (!phoneNumber) {
-            throw new Error('חובה להזין מספר טלפון');
+            throw new Error(plugin.tx('error.phone-required'));
         }
         
         const normalizedPhone = plugin.normalizePhone(phoneNumber);
 
         const isVerified = await plugin.isPhoneVerified(normalizedPhone);
         if (!isVerified) {
-            throw new Error('מספר הטלפון לא אומת. יש ללחוץ על "שלח לאימות" ולהזין את הקוד לפני סיום ההרשמה.');
+            throw new Error(plugin.tx('error.registration-unverified'));
         }
 
         const existingUid = await plugin.findUserByPhone(normalizedPhone);
         
         if (existingUid) {
             if (!req.uid || parseInt(existingUid, 10) !== parseInt(req.uid, 10)) {
-                throw new Error('מספר הטלפון כבר רשום במערכת למשתמש אחר');
+                throw new Error(plugin.tx('error.phone-exists-other'));
             }
         }
 
@@ -492,21 +535,21 @@ plugin.init = async function (params) {
     SocketPlugins.call2all = {};
 
     SocketPlugins.call2all.getUidByUsername = async function (socket, data) {
-        if (!data || !data.username) throw new Error('נא לספק שם משתמש');
+        if (!data || !data.username) throw new Error(plugin.tx('prompt.provide-username'));
         const uid = await User.getUidByUsername(data.username);
-        if (!uid) throw new Error('משתמש לא נמצא');
+        if (!uid) throw new Error(plugin.tx('error.user-not-found'));
         return uid;
     };
 
     SocketPlugins.call2all.adminAddVerifiedUser = async function (socket, data) {
-        if (!data || !data.uid) throw new Error('חסר מזהה משתמש');
+        if (!data || !data.uid) throw new Error(plugin.tx('error.missing-user-id'));
         const isAdmin = await User.isAdministrator(socket.uid);
-        if (!isAdmin) throw new Error('אין הרשאה');
+        if (!isAdmin) throw new Error(plugin.tx('error.not-authorized'));
 
         let phone = null;
         if (data.phone && data.phone.trim().length > 0) {
             phone = data.phone;
-            if (!plugin.validatePhoneNumber(phone)) throw new Error('מספר לא תקין');
+            if (!plugin.validatePhoneNumber(phone)) throw new Error(plugin.tx('error.invalid-phone'));
         }
 
         const result = await plugin.savePhoneToUser(data.uid, phone, true, true);
@@ -515,26 +558,26 @@ plugin.init = async function (params) {
     };
 
     SocketPlugins.call2all.adminVerifyUser = async function (socket, data) {
-        if (!data || !data.uid) throw new Error('שגיאה');
+        if (!data || !data.uid) throw new Error(plugin.tx('error.invalid-request'));
         const isAdmin = await User.isAdministrator(socket.uid);
-        if (!isAdmin) throw new Error('אין הרשאה');
+        if (!isAdmin) throw new Error(plugin.tx('error.not-authorized'));
         
         await User.setUserFields(data.uid, { phoneVerified: 1, phoneVerifiedAt: Date.now() });
         await db.sortedSetAdd('users:phone', Date.now(), data.uid);
     };
 
     SocketPlugins.call2all.adminUnverifyUser = async function (socket, data) {
-        if (!data || !data.uid) throw new Error('שגיאה');
+        if (!data || !data.uid) throw new Error(plugin.tx('error.invalid-request'));
         const isAdmin = await User.isAdministrator(socket.uid);
-        if (!isAdmin) throw new Error('אין הרשאה');
+        if (!isAdmin) throw new Error(plugin.tx('error.not-authorized'));
         
         await User.setUserFields(data.uid, { phoneVerified: 0, phoneVerifiedAt: 0 });
     };
 
     SocketPlugins.call2all.adminDeleteUserPhone = async function (socket, data) {
-        if (!data || !data.uid) throw new Error('שגיאה');
+        if (!data || !data.uid) throw new Error(plugin.tx('error.invalid-request'));
         const isAdmin = await User.isAdministrator(socket.uid);
-        if (!isAdmin) throw new Error('אין הרשאה');
+        if (!isAdmin) throw new Error(plugin.tx('error.not-authorized'));
         
         const phoneData = await plugin.getUserPhone(data.uid);
         if (phoneData && phoneData.phone) {
@@ -646,9 +689,9 @@ plugin.apiAdminRefreshToken = async function (req, res) {
 plugin.apiAdminTestCall = async function (req, res) {
     try {
         const { phoneNumber } = req.body;
-        if (!phoneNumber) return res.json({ success: false, message: 'חסר טלפון' });
+        if (!phoneNumber) return res.json({ success: false, message: plugin.tx('error.phone-required') });
         
-        // בצינתוק, השרת מחזיר את הקוד. בבדיקה אנו רק מוודאים שיצא שיחה
+        // In tzintuk mode the remote server returns the code. Here we only verify the call succeeds.
         const result = await plugin.sendTzintuk(plugin.normalizePhone(phoneNumber));
         res.json(result);
     } catch (err) { res.json({ success: false }); }
@@ -657,42 +700,43 @@ plugin.apiAdminTestCall = async function (req, res) {
 plugin.apiAdminTestUserCall = async function (req, res) {
     try {
         const { phoneNumber } = req.body;
-        if (!phoneNumber) return res.json({ success: false, message: 'חסר טלפון' });
+        if (!phoneNumber) return res.json({ success: false, message: plugin.tx('error.phone-required') });
         
         const settings = await plugin.getSettings();
         if (!settings.userCallEnabled) {
-            return res.json({ success: false, message: 'אימות בשיחה יזומה אינו פעיל' });
+            return res.json({ success: false, message: plugin.tx('error.user-call-disabled') });
         }
 
         const clean = plugin.normalizePhone(phoneNumber);
         if (!plugin.validatePhoneNumber(clean)) {
-            return res.json({ success: false, message: 'מספר טלפון לא תקין' });
+            return res.json({ success: false, message: plugin.tx('error.invalid-phone') });
         }
 
-        // יצירת קוד אימות זמני לבדיקה
+        // Create a temporary verification code for testing
         const code = plugin.generateNumericCode();
-        const saveResult = await plugin.saveVerificationCode(clean, code, { storePlain: true });
+        const language = await plugin.getRequestLanguage(req);
+        const saveResult = await plugin.saveVerificationCode(clean, code, { storePlain: true, language });
         
         if (!saveResult.success) {
-            return res.json({ success: false, message: 'שגיאה בשמירת קוד האימות' });
+            return res.json({ success: false, message: plugin.tx('error.save-code-failed') });
         }
 
         res.json({ 
             success: true, 
             code: code,
-            phoneNumber: settings.userCallNumber || 'לא הוגדר',
-            message: 'קוד אימות נוצר בהצלחה לבדיקה'
+            phoneNumber: settings.userCallNumber || plugin.tx('fallback.not-configured'),
+            message: plugin.tx('success.test-code-created')
         });
     } catch (err) { 
         console.error(err);
-        res.json({ success: false, message: 'שגיאה ביצירת קוד האימות' }); 
+        res.json({ success: false, message: plugin.tx('error.create-code-failed') }); 
     }
 };
 
 plugin.apiSendCode = async function (req, res) {
     try {
         const { phoneNumber } = req.body;
-        if (!phoneNumber) return res.json({ success: false, error: 'MISSING' });
+        if (!phoneNumber) return res.json({ success: false, error: 'MISSING', message: plugin.tx('error.phone-required') });
         
         const clientIp = req.ip || req.headers['x-forwarded-for'];
         const ipCheck = await plugin.checkIpRateLimit(clientIp);
@@ -700,22 +744,22 @@ plugin.apiSendCode = async function (req, res) {
         await plugin.incrementIpCounter(clientIp);
         
         const clean = plugin.normalizePhone(phoneNumber.replace(/\D/g, ''));
-        if (!plugin.validatePhoneNumber(clean)) return res.json({ success: false, error: 'INVALID' });
+        if (!plugin.validatePhoneNumber(clean)) return res.json({ success: false, error: 'INVALID', message: plugin.tx('error.invalid-phone') });
 
         const existingUid = await plugin.findUserByPhone(clean);
         if (existingUid && (!req.uid || parseInt(existingUid) !== parseInt(req.uid))) {
-            return res.json({ success: false, error: 'EXISTS', message: 'המספר תפוס' });
+            return res.json({ success: false, error: 'EXISTS', message: plugin.tx('error.phone-in-use') });
         }
         
-        // --- שינוי: שליחת בקשה לשרת כדי לקבל את הקוד (Caller ID) ---
+        // Request the code from the remote server using the caller ID
         const result = await plugin.sendTzintuk(clean);
         
         if (result.success && result.code) {
-             // שמירת הקוד שהתקבל מהשרת
-             await plugin.saveVerificationCode(clean, result.code);
-             res.json({ success: true, message: 'צינתוק נשלח, נא להזין את 4 הספרות האחרונות', method: 'tzintuk' });
+             // Save the code returned by the remote server
+             await plugin.saveVerificationCode(clean, result.code, { language: await plugin.getRequestLanguage(req) });
+             res.json({ success: true, message: plugin.tx('success.tzintuk-sent'), method: 'tzintuk' });
         } else {
-             res.json({ success: false, message: result.message || 'תקלה בשליחת הצינתוק' });
+             res.json({ success: false, message: result.message || plugin.tx('error.tzintuk-failed') });
         }
         
     } catch (err) { 
@@ -727,11 +771,11 @@ plugin.apiSendCode = async function (req, res) {
 plugin.apiRequestUserCall = async function (req, res) {
     try {
         const { phoneNumber } = req.body;
-        if (!phoneNumber) return res.json({ success: false, error: 'MISSING' });
+        if (!phoneNumber) return res.json({ success: false, error: 'MISSING', message: plugin.tx('error.phone-required') });
 
         const settings = await plugin.getSettings();
         if (!settings.userCallEnabled) {
-            return res.json({ success: false, error: 'CALL_DISABLED', message: 'אימות בשיחה יזומה אינו פעיל' });
+            return res.json({ success: false, error: 'CALL_DISABLED', message: plugin.tx('error.user-call-disabled') });
         }
 
         const clientIp = req.ip || req.headers['x-forwarded-for'];
@@ -740,18 +784,18 @@ plugin.apiRequestUserCall = async function (req, res) {
         await plugin.incrementIpCounter(clientIp);
 
         const clean = plugin.normalizePhone(phoneNumber.replace(/\D/g, ''));
-        if (!plugin.validatePhoneNumber(clean)) return res.json({ success: false, error: 'INVALID' });
+        if (!plugin.validatePhoneNumber(clean)) return res.json({ success: false, error: 'INVALID', message: plugin.tx('error.invalid-phone') });
 
         const existingUid = await plugin.findUserByPhone(clean);
         if (existingUid && (!req.uid || parseInt(existingUid) !== parseInt(req.uid))) {
-            return res.json({ success: false, error: 'EXISTS', message: 'המספר תפוס' });
+            return res.json({ success: false, error: 'EXISTS', message: plugin.tx('error.phone-in-use') });
         }
 
         const code = plugin.generateNumericCode();
-        const saveResult = await plugin.saveVerificationCode(clean, code, { storePlain: true });
+        const saveResult = await plugin.saveVerificationCode(clean, code, { storePlain: true, language: await plugin.getRequestLanguage(req) });
         if (!saveResult.success) return res.json(saveResult);
 
-        res.json({ success: true, message: 'הקוד הוכן. נא להתקשר לקו לצורך שמיעת הקוד.', callNumber: settings.userCallNumber || '' });
+        res.json({ success: true, message: plugin.tx('success.user-call-code-ready'), callNumber: settings.userCallNumber || '' });
     } catch (err) { 
         console.error(err);
         res.json({ success: false }); 
@@ -772,11 +816,11 @@ plugin.apiInitiateCall = async function (req, res) {
         const { phoneNumber } = req.body;
         
         if (!phoneNumber) {
-            return res.json({ success: false, error: 'PHONE_REQUIRED', message: 'חובה להזין מספר טלפון' });
+            return res.json({ success: false, error: 'PHONE_REQUIRED', message: plugin.tx('error.phone-required') });
         }
         
         if (!plugin.validatePhoneNumber(phoneNumber)) {
-            return res.json({ success: false, error: 'PHONE_INVALID', message: 'מספר הטלפון אינו תקין' });
+            return res.json({ success: false, error: 'PHONE_INVALID', message: plugin.tx('error.invalid-phone') });
         }
         
         const normalizedPhone = plugin.normalizePhone(phoneNumber);
@@ -785,29 +829,29 @@ plugin.apiInitiateCall = async function (req, res) {
         
         if (existingUid) {
             if (!req.uid || parseInt(existingUid, 10) !== parseInt(req.uid, 10)) {
-                return res.json({ success: false, error: 'PHONE_EXISTS', message: 'מספר הטלפון כבר רשום במערכת' });
+                return res.json({ success: false, error: 'PHONE_EXISTS', message: plugin.tx('error.phone-already-registered') });
             }
         }
         
-        // --- שינוי: שליחת צינתוק במקום יצירת קוד מקומי ---
+        // Send a tzintuk instead of generating a local code only
         const result = await plugin.sendTzintuk(normalizedPhone);
         
         if (!result.success || !result.code) {
             return res.json(result);
         }
 
-        const saveResult = await plugin.saveVerificationCode(normalizedPhone, result.code);
+        const saveResult = await plugin.saveVerificationCode(normalizedPhone, result.code, { language: await plugin.getRequestLanguage(req) });
         
         if (!saveResult.success) {
             return res.json(saveResult);
         }
         
-        // שימו לב: לא מחזירים את הקוד לקליינט בייצור (אלא אם רוצים דיבוג)
-        // כאן הקליינט צריך לבקש מהמשתמש את 4 הספרות האחרונות
+        // Do not return the code to the client in production unless debugging is explicitly desired.
+        // The client should ask the user for the last 4 digits.
         res.json({ success: true, phone: normalizedPhone, expiresAt: saveResult.expiresAt });
         
     } catch (err) {
-        res.json({ success: false, error: 'SERVER_ERROR', message: 'אירעה שגיאה' });
+        res.json({ success: false, error: 'SERVER_ERROR', message: plugin.tx('error.unexpected') });
     }
 };
 
@@ -817,43 +861,61 @@ plugin.apiInboundCall = async function (req, res) {
         const token = req.query.token;
         const phone = req.query.ApiPhone;
 
+        const defaultLanguage = await plugin.getDefaultLanguage();
+
         if (!token || token !== settings.callApiToken) {
-            const errorPayload = 'read=t-שגיאת הרשאה - הטוקן אינו תקין, אנא פנו למנהל המערכת, לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+            const authError = await plugin.translateFor(defaultLanguage, 'inbound.auth-error');
+            const contactAdmin = await plugin.translateFor(defaultLanguage, 'inbound.contact-admin');
+            const replay = await plugin.translateFor(defaultLanguage, 'inbound.replay');
+            const errorPayload = `read=t-${authError} ${contactAdmin} ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(403).send(errorPayload);
         }
         if (!phone || !plugin.validatePhoneNumber(phone)) {
-            const errorPayload = 'read=t-מספר הטלפון אינו תקין או חסר, אנא פנו למנהל המערכת, לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+            const phoneError = await plugin.translateFor(defaultLanguage, 'inbound.phone-missing');
+            const contactAdmin = await plugin.translateFor(defaultLanguage, 'inbound.contact-admin');
+            const replay = await plugin.translateFor(defaultLanguage, 'inbound.replay');
+            const errorPayload = `read=t-${phoneError} ${contactAdmin} ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(400).send(errorPayload);
         }
 
         const pending = await plugin.getPendingPlainCode(phone);
         if (!pending.success) {
-            let errorMessage = 'קוד האימות לא נמצא או פג תוקפו';
+            const language = pending.language || defaultLanguage;
+            let errorMessage = await plugin.translateFor(language, 'inbound.code-not-found-or-expired');
             
-            // הודעות ספציפיות לפי סוג השגיאה
+            // More specific user-facing errors when available
             if (pending.error === 'CODE_EXPIRED') {
-                errorMessage = 'פג תוקף קוד האימות';
+                errorMessage = await plugin.translateFor(language, 'inbound.code-expired');
             } else if (pending.error === 'PHONE_BLOCKED') {
-                errorMessage = 'המספר חסום זמנית';
+                errorMessage = await plugin.translateFor(language, 'inbound.phone-blocked');
             } else if (pending.error === 'CODE_UNAVAILABLE') {
-                errorMessage = 'הקוד אינו זמין כרגע';
+                errorMessage = await plugin.translateFor(language, 'inbound.code-unavailable');
             } else if (pending.error === 'DB_ERROR') {
-                errorMessage = 'שגיאה במסד הנתונים';
+                errorMessage = await plugin.translateFor(language, 'inbound.db-error');
             }
-            
-            const errorPayload = `read=t-${errorMessage}, אנא פנו למנהל המערכת, לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
+
+            const contactAdmin = await plugin.translateFor(language, 'inbound.contact-admin');
+            const replay = await plugin.translateFor(language, 'inbound.replay');
+            const errorPayload = `read=t-${errorMessage} ${contactAdmin} ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(404).send(errorPayload);
         }
 
         const code = pending.code;
-        const payload = `read=t-הקוד שלכם החד פעמי הוא.d-${code}.t-לשמיעה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
+        const language = pending.language || defaultLanguage;
+        const intro = await plugin.translateFor(language, 'inbound.code-announcement', code);
+        const replay = await plugin.translateFor(language, 'inbound.replay');
+        const payload = `read=t-${intro}.t-${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
         res.set('Content-Type', 'text/plain; charset=utf-8');
         res.send(payload);
     } catch (err) {
-        const errorPayload = 'read=t-שגיאה כללית במערכת, אנא פנו למנהל המערכת, לבדיקה חוזרת הַקִּישׁוּ 1=MOP,,1,1,15,NO,,,,1,3,OK,,,no';
+        const defaultLanguage = await plugin.getDefaultLanguage();
+        const systemError = await plugin.translateFor(defaultLanguage, 'inbound.system-error');
+        const contactAdmin = await plugin.translateFor(defaultLanguage, 'inbound.contact-admin');
+        const replay = await plugin.translateFor(defaultLanguage, 'inbound.replay');
+        const errorPayload = `read=t-${systemError} ${contactAdmin} ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
         res.set('Content-Type', 'text/plain; charset=utf-8');
         res.status(500).send(errorPayload);
     }
@@ -905,10 +967,10 @@ plugin.apiUpdateUserPhone = async function (req, res) {
         }
         
         const clean = plugin.normalizePhone(phoneNumber);
-        if (!plugin.validatePhoneNumber(clean)) return res.json({ success: false, error: 'INVALID' });
+        if (!plugin.validatePhoneNumber(clean)) return res.json({ success: false, error: 'INVALID', message: plugin.tx('error.invalid-phone') });
         
         const existing = await plugin.findUserByPhone(clean);
-        if (existing && parseInt(existing) !== parseInt(uid)) return res.json({ success: false, error: 'EXISTS' });
+        if (existing && parseInt(existing) !== parseInt(uid)) return res.json({ success: false, error: 'EXISTS', message: plugin.tx('error.phone-in-use') });
         
         await plugin.savePhoneToUser(uid, clean, false);
         res.json({ success: true, needsVerification: true });

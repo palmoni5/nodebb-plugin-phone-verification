@@ -1,8 +1,29 @@
 'use strict';
 
 
-define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], function(Settings, bootbox, alerts) {
+define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts', 'translator'], function(Settings, bootbox, alerts, translator) {
 	var ACP = {};
+
+	function tr(str) {
+		return translator.translate(str);
+	}
+
+	function tx(key) {
+		var args = Array.prototype.slice.call(arguments, 1);
+		return translator.compile.apply(translator, ['phone-verification:' + key].concat(args));
+	}
+
+	function successMessage(message) {
+		tr(message).then(function (translated) {
+			alerts.success(translated);
+		});
+	}
+
+	function errorMessage(message) {
+		tr(message).then(function (translated) {
+			alerts.error(translated);
+		});
+	}
 
 	ACP.init = function() {
 		var usersTbody = $('#users-tbody');
@@ -30,26 +51,26 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 			var configText = buildUserCallConfig(token);
 			var modalHtml =
 				'<div>' +
-					'<p>לשם ביצוע הפעולה יש להגדיר בקו שלכם בהגדרות השלוחה הראשית או השלוחה הרצויה לאימות את ההגדרות הבאות:</p>' +
+					'<p>[[phone-verification:admin.user-call-setup-help]]</p>' +
 					'<div class="mb-2">' +
-						'<button type="button" class="btn btn-default btn-sm" id="copy-user-call-config">העתק</button>' +
+						'<button type="button" class="btn btn-default btn-sm" id="copy-user-call-config">[[phone-verification:action.copy]]</button>' +
 					'</div>' +
 					'<pre style="white-space: pre-wrap;"><code id="user-call-config">' + configText + '</code></pre>' +
 				'</div>';
 
 			var dialog = bootbox.dialog({
-				title: 'הגדרת שיחה יזומה',
+				title: '[[phone-verification:admin.user-call-setup-title]]',
 				message: modalHtml,
 				buttons: {
 					cancel: {
-						label: 'ביטול',
+						label: '[[phone-verification:action.cancel]]',
 						className: 'btn-ghost',
 						callback: function() {
 							if (typeof onConfirm === 'function') onConfirm(false);
 						}
 					},
 					ok: {
-						label: 'הגדרתי את הקו שיעביר להמשך',
+						label: '[[phone-verification:admin.user-call-setup-confirm]]',
 						className: 'btn-primary',
 						callback: function() {
 							if (typeof onConfirm === 'function') onConfirm(true);
@@ -63,17 +84,17 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 					var text = $('#user-call-config').text();
 					if (navigator.clipboard && navigator.clipboard.writeText) {
 						navigator.clipboard.writeText(text).then(function() {
-							alerts.success('הועתק ללוח');
+							successMessage(tx('admin.copied-to-clipboard'));
 						}).catch(function() {
-							alerts.error('לא ניתן להעתיק');
+							errorMessage(tx('admin.copy-failed'));
 						});
 					} else {
 						var $temp = $('<textarea>').val(text).appendTo('body').select();
 						try {
 							document.execCommand('copy');
-							alerts.success('הועתק ללוח');
+							successMessage(tx('admin.copied-to-clipboard'));
 						} catch (e) {
-							alerts.error('לא ניתן להעתיק');
+							errorMessage(tx('admin.copy-failed'));
 						}
 						$temp.remove();
 					}
@@ -84,7 +105,7 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 		$('#save-settings-btn').on('click', function(e) {
 			e.preventDefault();
 			Settings.save('phone-verification', $('#voice-settings-form'), function() {
-				alerts.success('ההגדרות נשמרו בהצלחה!');
+				successMessage(tx('admin.settings-saved'));
 			});
 		});
 
@@ -103,7 +124,7 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 							}
 						});
 					} else {
-						alerts.error('שגיאה ביצירת טוקן');
+						errorMessage(tx('admin.token-create-failed'));
 						$checkbox.prop('checked', false);
 					}
 				});
@@ -119,16 +140,16 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 
 		$('#refresh-call-token-btn').on('click', function() {
 			bootbox.confirm({
-				title: 'רענון טוקן',
-				message: 'אחרי הרענון יש לעדכן את הגדרות השלוחה בקו. האם להמשיך?',
+				title: '[[phone-verification:admin.refresh-token-title]]',
+				message: '[[phone-verification:admin.refresh-token-confirm]]',
 				callback: function(result) {
 					if (!result) return;
 					$.post(config.relative_path + '/api/admin/plugins/phone-verification/refresh-token', { _csrf: config.csrf_token }, function(res) {
 						if (res && res.success && res.token) {
 							$('#callApiToken').val(res.token);
-							alerts.success('הטוקן עודכן');
+							successMessage(tx('admin.token-refreshed'));
 						} else {
-							alerts.error('שגיאה ברענון הטוקן');
+							errorMessage(tx('admin.token-refresh-failed'));
 						}
 					});
 				}
@@ -147,18 +168,18 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 		}
 
 		function buildUserRow(user) {
-			var displayName = user.username || ('משתמש ' + user.uid);
+			var displayName = user.username || tx('admin.user-fallback', user.uid);
 			var safeName = $('<div>').text(displayName).html(); 
 			var userLink = config.relative_path + '/admin/manage/users?searchBy=uid&query=' + user.uid + '&page=1&sortBy=lastonline';
 			
-			var statusBadge = user.phoneVerified ? '<span class="label label-success">מאומת</span>' : '<span class="label label-warning">ממתין</span>';
+			var statusBadge = user.phoneVerified ? '<span class="label label-success">[[phone-verification:admin.status-verified]]</span>' : '<span class="label label-warning">[[phone-verification:admin.status-pending]]</span>';
 			
-			var safePhone = user.phone ? $('<div>').text(user.phone).html() : '<span class="text-muted">-- ללא --</span>';
+			var safePhone = user.phone ? $('<div>').text(user.phone).html() : '<span class="text-muted">[[phone-verification:admin.none]]</span>';
 			var dateStr = user.phoneVerifiedAt ? new Date(user.phoneVerifiedAt).toLocaleDateString('he-IL') : '-';
 
-			var btnVerify = '<button class="btn btn-xs btn-success verify-user-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="אמת"><i class="fa fa-check"></i></button>';
-			var btnUnverify = '<button class="btn btn-xs btn-warning unverify-user-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="בטל"><i class="fa fa-ban"></i></button>';
-			var btnDelete = '<button class="btn btn-xs btn-danger delete-phone-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="מחק"><i class="fa fa-trash"></i></button>';
+			var btnVerify = '<button class="btn btn-xs btn-success verify-user-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="[[phone-verification:action.verify]]"><i class="fa fa-check"></i></button>';
+			var btnUnverify = '<button class="btn btn-xs btn-warning unverify-user-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="[[phone-verification:action.unverify]]"><i class="fa fa-ban"></i></button>';
+			var btnDelete = '<button class="btn btn-xs btn-danger delete-phone-btn" data-uid="' + user.uid + '" data-name="' + safeName + '" title="[[phone-verification:action.delete]]"><i class="fa fa-trash"></i></button>';
 
 			var actionBtn = user.phoneVerified ? btnUnverify : btnVerify;
 
@@ -174,19 +195,29 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 
 		function loadUsers(page) {
 			page = page || 1;
-			usersTbody.html('<tr><td colspan="6" class="text-center"><i class="fa fa-spinner fa-spin"></i> טוען נתונים...</td></tr>');
+			tr('<tr><td colspan="6" class="text-center"><i class="fa fa-spinner fa-spin"></i> [[phone-verification:admin.loading-data]]</td></tr>').then(function (translated) {
+				usersTbody.html(translated);
+			});
 			
 			$.get(config.relative_path + '/api/admin/plugins/phone-verification/users', { page: page }, function(data) {
 				if (!data || !data.success) {
-					usersTbody.html('<tr><td colspan="6" class="text-center text-danger">שגיאה בטעינת נתונים</td></tr>');
+					tr('<tr><td colspan="6" class="text-center text-danger">[[phone-verification:admin.load-error]]</td></tr>').then(function (translated) {
+						usersTbody.html(translated);
+					});
 					return;
 				}
 				if (data.users.length === 0) {
-					usersTbody.html('<tr><td colspan="6" class="text-center">אין משתמשים להצגה</td></tr>');
+					tr('<tr><td colspan="6" class="text-center">[[phone-verification:admin.no-users]]</td></tr>').then(function (translated) {
+						usersTbody.html(translated);
+					});
 					return;
 				}
 				usersTbody.empty();
-				data.users.forEach(function(user) { usersTbody.append(buildUserRow(user)); });
+				data.users.forEach(function(user) {
+					tr(buildUserRow(user)).then(function (translated) {
+						usersTbody.append(translated);
+					});
+				});
 				$('#total-users').text(data.total); 
 				renderPagination(data.page, data.totalPages);
 			});
@@ -201,28 +232,25 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 		});
 
 		$('#btn-add-manual-user').on('click', function() {
-			bootbox.prompt("הזן את <b>שם המשתמש</b> שברצונך להוסיף לרשימת המאומתים:", function(username) {
+			bootbox.prompt(tx('admin.prompt-username'), function(username) {
 				if (!username) return;
 
 				socket.emit('plugins.call2all.getUidByUsername', { username: username }, function(err, uid) {
-					if (err) return alerts.error(err.message || 'משתמש לא נמצא');
+					if (err) return errorMessage(err.message || tx('prompt.user-not-found'));
 
 					bootbox.prompt({
-						title: "הזן מספר טלפון עבור " + username + " (אופציונלי)",
+						title: tx('admin.prompt-phone-for-user', username),
 						inputType: 'text',
 						callback: function(phone) {
 							if (phone === null) return;
 
-							var confirmMsg = "<h4>סיכום פעולה</h4>" +
-											 "<b>שם משתמש:</b> " + username + "<br/>" +
-											 "<b>מספר טלפון:</b> " + (phone ? phone : "ללא מספר (יוגדר כמאומת)") + "<br/><br/>" +
-											 "האם אתה בטוח שברצונך להמשיך?";
+							var confirmMsg = tx('admin.add-user-summary', username, phone ? phone : tx('admin.none-with-verified-note'));
 
 							bootbox.confirm(confirmMsg, function(result) {
 								if (result) {
 									socket.emit('plugins.call2all.adminAddVerifiedUser', { uid: uid, phone: phone }, function(err) {
-										if (err) return alerts.error(err.message);
-										alerts.success('המשתמש ' + username + ' הוגדר כמאומת בהצלחה!');
+										if (err) return errorMessage(err.message);
+										successMessage(tx('admin.user-verified-success', username));
 										loadUsers(1);
 									});
 								}
@@ -235,47 +263,46 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 
 		$('#test-call-btn').on('click', function() {
 			var phone = $('#test-phone').val();
-			if(!phone) return alerts.error('נא להזין מספר לבדיקה');
+			if(!phone) return errorMessage(tx('admin.enter-phone-for-test'));
 			
 			$.post(config.relative_path + '/api/admin/plugins/phone-verification/test-call', { phoneNumber: phone, _csrf: config.csrf_token }, function(res) {
 				if(res.success) {
-                    // עדכון: הצגת הקוד שהתקבל מהשרת למנהל
-                    var msg = res.message || 'הצינתוק יצא בהצלחה';
+                    var msg = res.message || tx('admin.test-tzintuk-success');
                     if (res.code) {
-                        msg += '<br><strong>קוד צפוי (4 ספרות אחרונות): ' + res.code + '</strong>';
+                        msg += '<br><strong>' + tx('admin.expected-code', res.code) + '</strong>';
                     }
-                    alerts.success(msg);
+                    successMessage(msg);
                 }
-				else alerts.error(res.message || 'שגיאה בביצוע הבדיקה');
+				else errorMessage(res.message || tx('admin.test-call-failed'));
 			});
 		});
 
 		$('#test-user-call-btn').on('click', function() {
 			var phone = $('#test-user-call-phone').val();
-			if(!phone) return alerts.error('נא להזין מספר לבדיקה');
+			if(!phone) return errorMessage(tx('admin.enter-phone-for-test'));
 			
 			$.post(config.relative_path + '/api/admin/plugins/phone-verification/test-user-call', { phoneNumber: phone, _csrf: config.csrf_token }, function(res) {
 				if(res.success) {
-					var msg = 'קוד אימות נוצר בהצלחה';
+					var msg = tx('admin.test-user-call-success');
 					if (res.code) {
-						msg += '<br><strong>קוד האימות: ' + res.code + '</strong>';
+						msg += '<br><strong>' + tx('admin.verification-code-label', res.code) + '</strong>';
 					}
 					if (res.phoneNumber) {
-						msg += '<br><strong>מספר הקו: ' + res.phoneNumber + '</strong>';
+						msg += '<br><strong>' + tx('admin.line-number-label', res.phoneNumber) + '</strong>';
 					}
-					alerts.success(msg);
+					successMessage(msg);
 				}
-				else alerts.error(res.message || 'שגיאה ביצירת קוד האימות');
+				else errorMessage(res.message || tx('admin.create-code-failed'));
 			});
 		});
 
 		$('#users-table').on('click', '.verify-user-btn', function() {
 			var uid = $(this).data('uid');
 			var name = $(this).data('name');
-			bootbox.confirm("האם לאמת ידנית את " + name + "?", function(res) {
+			bootbox.confirm(tx('admin.confirm-verify-user', name), function(res) {
 				if(res) socket.emit('plugins.call2all.adminVerifyUser', { uid: uid }, function(err) {
-					if(err) return alerts.error(err.message);
-					alerts.success('המשתמש ' + name + ' אומת!');
+					if(err) return errorMessage(err.message);
+					successMessage(tx('admin.user-verified-now', name));
 					loadUsers(currentPage);
 				});
 			});
@@ -284,10 +311,10 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 		$('#users-table').on('click', '.unverify-user-btn', function() {
 			var uid = $(this).data('uid');
 			var name = $(this).data('name');
-			bootbox.confirm("האם לבטל את האימות ל-" + name + "?", function(res) {
+			bootbox.confirm(tx('admin.confirm-unverify-user', name), function(res) {
 				if(res) socket.emit('plugins.call2all.adminUnverifyUser', { uid: uid }, function(err) {
-					if(err) return alerts.error(err.message);
-					alerts.success('האימות בוטל!');
+					if(err) return errorMessage(err.message);
+					successMessage(tx('admin.unverified-success'));
 					loadUsers(currentPage);
 				});
 			});
@@ -296,10 +323,10 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 		$('#users-table').on('click', '.delete-phone-btn', function() {
 			var uid = $(this).data('uid');
 			var name = $(this).data('name');
-			bootbox.confirm("האם למחוק את הטלפון של " + name + "?", function(res) {
+			bootbox.confirm(tx('admin.confirm-delete-phone', name), function(res) {
 				if(res) socket.emit('plugins.call2all.adminDeleteUserPhone', { uid: uid }, function(err) {
-					if(err) return alerts.error(err.message);
-					alerts.success('נמחק!');
+					if(err) return errorMessage(err.message);
+					successMessage(tx('admin.deleted-success'));
 					loadUsers(currentPage);
 				});
 			});
@@ -310,8 +337,15 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts'], fu
 			if (!phone) { loadUsers(1); return; }
 			$.get(config.relative_path + '/api/admin/plugins/phone-verification/search', { phone: phone }, function(data) {
 				usersTbody.empty();
-				if (data.success && data.found) usersTbody.append(buildUserRow(data.user));
-				else usersTbody.html('<tr><td colspan="6" class="text-center">לא נמצא משתמש</td></tr>');
+				if (data.success && data.found) {
+					tr(buildUserRow(data.user)).then(function (translated) {
+						usersTbody.append(translated);
+					});
+				} else {
+					tr('<tr><td colspan="6" class="text-center">[[phone-verification:admin.user-not-found-search]]</td></tr>').then(function (translated) {
+						usersTbody.html(translated);
+					});
+				}
 			});
 		});
 	};
