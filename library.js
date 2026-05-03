@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const https = require('https');
 const nconf = require.main.require('nconf');
+const translator = require.main.require('./src/translator');
 
 // NodeBB modules
 let db;
@@ -445,7 +446,7 @@ plugin.userCreated = async function (data) {
 
 plugin.addAdminNavigation = async function (header) {
     if (header.plugins) {
-        header.plugins.push({ route: '/plugins/phone-verification', icon: 'fa-phone', name: 'אימות טלפון' });
+        header.plugins.push({ route: '/plugins/phone-verification', icon: 'fa-phone', name: '[[phone-verification:admin.nav-title]]' });
     }
     return header;
 };

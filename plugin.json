@@ -2,9 +2,10 @@
     "id": "nodebb-plugin-phone-verification",
     "name": "Phone Verification",
     "description": "Phone number verification for registration flow and user profile management",
-    "version": "3.0.3",
+    "version": "3.1.0",
     "url": "https://github.com/palmoni5/nodebb-plugin-phone-verification",
     "library": "./library.js",
+    "languages": "./languages",
     "hooks": [
         { "hook": "filter:register.check", "method": "checkRegistration" },
         { "hook": "action:user.create", "method": "userCreated" },
