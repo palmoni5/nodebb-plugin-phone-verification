@@ -867,7 +867,7 @@ plugin.apiInboundCall = async function (req, res) {
             const authError = await plugin.translateFor(defaultLanguage, 'inbound.auth-error');
             const contactAdmin = await plugin.translateFor(defaultLanguage, 'inbound.contact-admin');
             const replay = await plugin.translateFor(defaultLanguage, 'inbound.replay');
-            const errorPayload = `read=t-${authError} ${contactAdmin} ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
+            const errorPayload = `read=t-${authError}, ${contactAdmin}, ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(403).send(errorPayload);
         }
@@ -875,7 +875,7 @@ plugin.apiInboundCall = async function (req, res) {
             const phoneError = await plugin.translateFor(defaultLanguage, 'inbound.phone-missing');
             const contactAdmin = await plugin.translateFor(defaultLanguage, 'inbound.contact-admin');
             const replay = await plugin.translateFor(defaultLanguage, 'inbound.replay');
-            const errorPayload = `read=t-${phoneError} ${contactAdmin} ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
+            const errorPayload = `read=t-${phoneError}, ${contactAdmin}, ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(400).send(errorPayload);
         }
@@ -898,7 +898,7 @@ plugin.apiInboundCall = async function (req, res) {
 
             const contactAdmin = await plugin.translateFor(language, 'inbound.contact-admin');
             const replay = await plugin.translateFor(language, 'inbound.replay');
-            const errorPayload = `read=t-${errorMessage} ${contactAdmin} ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
+            const errorPayload = `read=t-${errorMessage}, ${contactAdmin}, ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
             res.set('Content-Type', 'text/plain; charset=utf-8');
             return res.status(404).send(errorPayload);
         }
@@ -915,7 +915,7 @@ plugin.apiInboundCall = async function (req, res) {
         const systemError = await plugin.translateFor(defaultLanguage, 'inbound.system-error');
         const contactAdmin = await plugin.translateFor(defaultLanguage, 'inbound.contact-admin');
         const replay = await plugin.translateFor(defaultLanguage, 'inbound.replay');
-        const errorPayload = `read=t-${systemError} ${contactAdmin} ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
+        const errorPayload = `read=t-${systemError}, ${contactAdmin}, ${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
         res.set('Content-Type', 'text/plain; charset=utf-8');
         res.status(500).send(errorPayload);
     }
