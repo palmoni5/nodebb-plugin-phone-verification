@@ -905,9 +905,9 @@ plugin.apiInboundCall = async function (req, res) {
 
         const code = pending.code;
         const language = pending.language || defaultLanguage;
-        const intro = await plugin.translateFor(language, 'inbound.code-announcement', code);
+        const intro = await plugin.translateFor(language, 'inbound.code-announcement');
         const replay = await plugin.translateFor(language, 'inbound.replay');
-        const payload = `read=t-${intro}.t-${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
+        const payload = `read=t-${intro}.d-${code}.t-${replay}=MOP,,1,1,15,NO,,,,1,3,OK,,,no`;
         res.set('Content-Type', 'text/plain; charset=utf-8');
         res.send(payload);
     } catch (err) {

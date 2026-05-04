@@ -170,5 +170,5 @@
   "inbound.system-error": "שגיאה כללית במערכת",
   "inbound.contact-admin": "אנא פנו למנהל המערכת.",
   "inbound.replay": "לשמיעה חוזרת הַקִּישׁוּ 1",
-  "inbound.code-announcement": "הקוד החד פעמי שלכם הוא %1"
+  "inbound.code-announcement": "הקוד החד פעמי שלכם הוא"
 }

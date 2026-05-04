@@ -170,5 +170,5 @@
   "inbound.system-error": "A system error occurred",
   "inbound.contact-admin": "Please contact the system administrator.",
   "inbound.replay": "To hear this message again, press 1",
-  "inbound.code-announcement": "Your one-time verification code is %1"
+  "inbound.code-announcement": "Your one-time verification code is"
 }
