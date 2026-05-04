@@ -160,15 +160,15 @@
   "success.user-call-code-ready": "Your code is ready. Please call the line to hear it.",
   "error.phone-already-registered": "This phone number is already registered in the system",
   "error.unexpected": "An unexpected error occurred",
-  "inbound.auth-error": "Authorization error. The token is invalid.",
-  "inbound.phone-missing": "The phone number is invalid or missing.",
+  "inbound.auth-error": "Authorization error, the token is invalid",
+  "inbound.phone-missing": "The phone number is invalid or missing",
   "inbound.code-not-found-or-expired": "The verification code was not found or has expired",
   "inbound.code-expired": "The verification code has expired",
   "inbound.phone-blocked": "This phone number is temporarily blocked",
   "inbound.code-unavailable": "The verification code is currently unavailable",
   "inbound.db-error": "A database error occurred",
   "inbound.system-error": "A system error occurred",
-  "inbound.contact-admin": "Please contact the system administrator.",
+  "inbound.contact-admin": "Please contact the system administrator",
   "inbound.replay": "To hear this message again, press 1",
   "inbound.code-announcement": "Your one-time verification code is"
 }

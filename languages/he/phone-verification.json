@@ -160,15 +160,15 @@
   "success.user-call-code-ready": "הקוד הוכן. נא להתקשר לקו לצורך שמיעת הקוד.",
   "error.phone-already-registered": "מספר הטלפון כבר רשום במערכת",
   "error.unexpected": "אירעה שגיאה",
-  "inbound.auth-error": "שגיאת הרשאה. הטוקן אינו תקין.",
-  "inbound.phone-missing": "מספר הטלפון אינו תקין או חסר.",
+  "inbound.auth-error": "שגיאת הרשאה, הטוקן אינו תקין",
+  "inbound.phone-missing": "מספר הטלפון אינו תקין או חסר",
   "inbound.code-not-found-or-expired": "קוד האימות לא נמצא או פג תוקפו",
   "inbound.code-expired": "פג תוקף קוד האימות",
   "inbound.phone-blocked": "המספר חסום זמנית",
   "inbound.code-unavailable": "הקוד אינו זמין כרגע",
   "inbound.db-error": "שגיאה במסד הנתונים",
   "inbound.system-error": "שגיאה כללית במערכת",
-  "inbound.contact-admin": "אנא פנו למנהל המערכת.",
+  "inbound.contact-admin": "אנא פנו למנהל המערכת",
   "inbound.replay": "לשמיעה חוזרת הַקִּישׁוּ 1",
   "inbound.code-announcement": "הקוד החד פעמי שלכם הוא"
 }
