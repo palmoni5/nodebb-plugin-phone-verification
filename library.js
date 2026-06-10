@@ -445,6 +445,61 @@ plugin.getAllUsersWithPhones = async function (start = 0, stop = 49) {
     return { users: usersList, total };
 };
 
+plugin.addFieldRegister = async function (data) {
+    const settings = await plugin.getSettings();
+    const showTzintuk = settings.voiceServerEnabled;
+    const showUserCall = settings.userCallEnabled;
+    const userCallNumber = settings.userCallNumber || '';
+
+    const methodsHtml = (showTzintuk || showUserCall) ? `
+        <div class="mb-2 d-flex flex-column gap-2 hidden" id="verification-methods">
+            <label class="form-label fw-bold">[[phone-verification:registration.choose-method]]</label>
+            <div class="d-flex flex-column gap-1">
+                ${showTzintuk ? `<label class="form-check-label"><input class="form-check-input" type="radio" name="verificationMethod" value="tzintuk" /> [[phone-verification:registration.method-tzintuk]]</label>` : ''}
+                ${showUserCall ? `<label class="form-check-label"><input class="form-check-input" type="radio" name="verificationMethod" value="user-call" /> [[phone-verification:registration.method-user-call]]</label>` : ''}
+            </div>
+            <div class="form-text text-xs" id="method-help"></div>
+            ${userCallNumber ? `<div class="form-text text-xs" id="user-call-number-text">[[phone-verification:registration.line-number, ${userCallNumber}]]</div>` : '<div class="form-text text-xs" id="user-call-number-text" style="display:none;"></div>'}
+        </div>` : '';
+
+    const html = `
+        <div class="mb-2 d-flex flex-column gap-2" id="phone-verification-container">
+            <div class="d-flex flex-column">
+                <div class="input-group">
+                    <input class="form-control" type="tel" name="phoneNumber" id="phoneNumber" placeholder="05X-XXXXXXX" dir="ltr" autocomplete="tel" />
+                    <button class="btn btn-primary" type="button" id="send-code-btn"><i class="fa fa-phone"></i> [[phone-verification:action.send-verification]]</button>
+                </div>
+                ${methodsHtml}
+                <div id="phone-error" class="text-danger text-xs hidden"></div>
+                <div id="phone-success" class="text-success text-xs hidden"></div>
+            </div>
+        </div>
+        <div class="mb-2 d-flex flex-column gap-2 hidden" id="verification-code-container">
+            <label for="verificationCode">[[phone-verification:field.verification-code]]</label>
+            <div class="d-flex flex-column">
+                <div class="input-group">
+                    <input class="form-control" type="text" id="verificationCode" placeholder="[[phone-verification:placeholder.last-4-digits]]" maxlength="4" dir="ltr" />
+                    <button class="btn btn-success" type="button" id="verify-code-btn"><i class="fa fa-check"></i> [[phone-verification:action.verify]]</button>
+                </div>
+                <button class="btn btn-link btn-sm p-0 text-start" type="button" id="resend-code-btn">[[phone-verification:registration.send-tzintuk-again]]</button>
+            </div>
+        </div>
+        <div id="phone-verified-badge" class="alert alert-success hidden"><i class="fa fa-check-circle"></i> [[phone-verification:success.phone-verified]]</div>
+    `.replace(/\r?\n\s*/g, ' ').trim();
+
+    if (!data.templateData.regFormEntry) {
+        data.templateData.regFormEntry = [];
+    }
+    data.templateData.regFormEntry.push({
+        id: 'phone-verification-container',
+        inputId: 'phoneNumber',
+        label: '[[phone-verification:field.phone-number]]',
+        html: html,
+    });
+
+    return data;
+};
+
 plugin.checkRegistration = async function (data) {
     try {
         const phoneNumber = data.req.body.phoneNumber;
