@@ -487,13 +487,16 @@ plugin.addFieldRegister = async function (data) {
         <div id="phone-verified-badge" class="alert alert-success hidden"><i class="fa fa-check-circle"></i> [[phone-verification:success.phone-verified]]</div>
     `.replace(/\r?\n\s*/g, ' ').trim();
 
+    if (!data.templateData) {
+        data.templateData = {};
+    }
     if (!data.templateData.regFormEntry) {
         data.templateData.regFormEntry = [];
     }
     data.templateData.regFormEntry.push({
         id: 'phone-verification-container',
         inputId: 'phoneNumber',
-        label: '[[phone-verification:field.phone-number]]',
+        label: '[[phone-verification:field.phone-number]] *',
         html: html,
     });
 

@@ -105,6 +105,14 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
             if (self.isInitializing) return;
             if ($form.data('phoneVerificationInitialized')) return;
 
+            // The phone field HTML is rendered server-side via filter:register.build.
+            // If the active theme's register template does not render regFormEntry,
+            // the field is absent — skip init so registration is not blocked.
+            if (!$('#phoneNumber').length) {
+                $form.data('phoneVerificationInitialized', true);
+                return;
+            }
+
             self.isInitializing = true;
             self.phoneVerified = false;
             const $registerBtn = $form.find('button[type="submit"]');
@@ -113,15 +121,19 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                 $registerBtn.prop('disabled', true);
             }
 
-            // The phone field HTML is already rendered server-side via filter:register.build.
-            // We only need to attach event listeners and load settings for dynamic behaviour.
             loadPublicSettings().then(function(settings) {
                 $form.data('phoneVerificationInitialized', true);
                 self.attachEventListeners(settings);
                 self.checkExistingVerification();
                 self.isInitializing = false;
-            }).catch(function () {
+            }).catch(function (err) {
+                console.error('[phone-verification] Failed to initialize phone verification:', err);
                 self.isInitializing = false;
+                // Server-side filter:register.check still enforces verification;
+                // leave the button usable instead of frozen with no feedback.
+                if ($registerBtn.length) {
+                    $registerBtn.prop('disabled', false);
+                }
             });
         },
 
