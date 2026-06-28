@@ -2,7 +2,7 @@
     "id": "nodebb-plugin-phone-verification",
     "name": "Phone Verification",
     "description": "Phone number verification for registration flow and user profile management",
-    "version": "3.2.0",
+    "version": "3.2.1",
     "url": "https://github.com/palmoni5/nodebb-plugin-phone-verification",
     "library": "./library.js",
     "languages": "./languages",
@@ -31,5 +31,5 @@
     "acpScripts": [ "static/lib/admin.js" ],
     "templates": "templates",
     "staticDirs": { "static": "static" },
-    "nbbpm": { "compatibility": "^2.0.0 || ^3.0.0 || ^4.0.0" }
+    "nbbpm": { "compatibility": "^3.0.0 || ^4.0.0" }
 }

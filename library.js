@@ -1085,11 +1085,15 @@ plugin.apiAdminGetUserPhone = async function (req, res) {
 
 plugin.userDelete = async function (data) {
     try {
-        const phones = await db.getSortedSetRangeByScore('phone:uid', data.uid, 1, data.uid);
-        if (phones[0]) {
-            await db.sortedSetRemove('phone:uid', phones[0]);
-            await db.sortedSetRemove('users:phone', data.uid);
+        // `phone:uid` stores member=phone, score=uid, so the deleted user's phone
+        // numbers are the members whose score equals their uid. The previous call
+        // passed the uid as `start` with no `max`, so nothing was ever matched and
+        // the number stayed in the set, blocking it from being registered again.
+        const phones = await db.getSortedSetRangeByScore('phone:uid', 0, -1, data.uid, data.uid);
+        if (phones && phones.length) {
+            await db.sortedSetRemove('phone:uid', phones);
         }
+        await db.sortedSetRemove('users:phone', data.uid);
     } catch (e) {}
 };
 
