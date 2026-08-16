@@ -1,6 +1,6 @@
 'use strict';
 
-define('forum/phone-verification', ['hooks', 'translator'], function (hooks, translator) {
+define('forum/phone-verification', ['hooks', 'translator', 'modals'], function (hooks, translator, modals) {
     function tr(str) {
         return translator.translate(str);
     }
@@ -14,6 +14,13 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
         if (!phone) return false;
         const cleanPhone = phone.replace(/[-\s]/g, '');
         return /^05\d{8}$/.test(cleanPhone);
+    }
+
+    const HTML_ESCAPE_MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, function (ch) {
+            return HTML_ESCAPE_MAP[ch];
+        });
     }
 
     let publicSettingsCache = null;
@@ -375,9 +382,9 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
         });
     }
 
-    function openPhoneManagementModal(currentPhone, isVerified, userslug) {
-        const phoneVal = currentPhone || '';
-        
+    async function openPhoneManagementModal(currentPhone, isVerified, userslug) {
+        const phoneVal = escapeHtml(currentPhone || '');
+
         // Phone update modal
         const modalHtml = `
             <div class="phone-modal-content">
@@ -387,9 +394,9 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                         <input class="form-control" type="tel" id="modal-phoneNumber" value="${phoneVal}" placeholder="05X-XXXXXXX" dir="ltr">
                     </div>
                     <div class="form-text text-muted mt-2">
-                        <i class="fa fa-info-circle"></i> 
-                        ${isVerified 
-                            ? '[[phone-verification:profile.current-verified-info]]' 
+                        <i class="fa fa-info-circle"></i>
+                        ${isVerified
+                            ? '[[phone-verification:profile.current-verified-info]]'
                             : '[[phone-verification:profile.enter-number-info]]'}
                     </div>
                 </div>
@@ -397,7 +404,7 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
             </div>
         `;
 
-        const dialog = bootbox.dialog({
+        const dialog = await modals.dialog({
             title: isVerified ? '[[phone-verification:profile.change-title]]' : '[[phone-verification:profile.update-title]]',
             message: modalHtml,
             buttons: {
@@ -410,14 +417,14 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                     className: 'btn-primary',
                     callback: function() {
                         const newPhone = $('#modal-phoneNumber').val();
-                        
+
                         if (!isValidIsraeliPhone(newPhone)) {
                             showModalAlert(tx('error.invalid-phone-format'), 'danger');
-                            return false; 
+                            return false;
                         }
 
                         performPhoneUpdate(newPhone, userslug, dialog);
-                        return false; 
+                        return false;
                     }
                 }
             }
@@ -451,7 +458,7 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
 
             loadPublicSettings().then(function(settings) {
                 function askForCode(title) {
-                    bootbox.prompt({
+                    modals.prompt({
                         title: title,
                         inputType: 'number',
                         callback: function (code) {
@@ -514,7 +521,7 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
                 }
 
                 if (settings.voiceServerEnabled && settings.userCallEnabled) {
-                    bootbox.dialog({
+                    modals.dialog({
                         title: '[[phone-verification:dialog.choose-verification-method]]',
                         message: '[[phone-verification:dialog.choose-verification-message]]',
                         buttons: {
@@ -553,15 +560,16 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
 
             if ($('#user-phone-stat-item').length > 0) return;
 
-            const verifyBadge = response.phoneVerified 
-                ? '<i class="" title=""></i>' 
-                : '<i class="fa fa-exclamation-triangle text-warning" title="[[phone-verification:status.not-verified]]" style="cursor:pointer;" onclick="location.href=\'' + config.relative_path + '/user/' + userslug + '/edit\'"></i>';
+            const editUrl = config.relative_path + '/user/' + userslug + '/edit';
+            const verifyBadge = response.phoneVerified
+                ? '<i class="" title=""></i>'
+                : '<i class="fa fa-exclamation-triangle text-warning phone-goto-edit" title="[[phone-verification:status.not-verified]]" style="cursor:pointer;" data-edit-url="' + escapeHtml(editUrl) + '"></i>';
 
-            const privacyLabel = response.isOwner 
-                ? ' <span class="text-lowercase">([[phone-verification:label.hidden]])</span>' 
+            const privacyLabel = response.isOwner
+                ? ' <span class="text-lowercase">([[phone-verification:label.hidden]])</span>'
                 : '';
 
-            const phoneText = response.phone;
+            const phoneText = escapeHtml(response.phone);
             
             const html = `
                 <div class="stat" id="user-phone-stat-item">
@@ -620,6 +628,10 @@ define('forum/phone-verification', ['hooks', 'translator'], function (hooks, tra
             handleProfileView();
         }
     }
+
+    $(document).on('click', '.phone-goto-edit', function () {
+        window.location.href = $(this).data('edit-url');
+    });
 
     hooks.on('action:ajaxify.end', function (data) {
         checkRoute();

@@ -1,7 +1,7 @@
 'use strict';
 
 
-define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts', 'translator'], function(Settings, bootbox, alerts, translator) {
+define('admin/plugins/phone-verification', ['settings', 'modals', 'alerts', 'translator'], function(Settings, modals, alerts, translator) {
 	var ACP = {};
 
 	function tr(str) {
@@ -47,7 +47,7 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts', 'tr
 			].join('\n');
 		}
 
-		function showUserCallSetupModal(token, onConfirm) {
+		async function showUserCallSetupModal(token, onConfirm) {
 			var configText = buildUserCallConfig(token);
 			var modalHtml =
 				'<div>' +
@@ -58,7 +58,7 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts', 'tr
 					'<pre style="white-space: pre-wrap;"><code id="user-call-config">' + configText + '</code></pre>' +
 				'</div>';
 
-			var dialog = bootbox.dialog({
+			var dialog = await modals.dialog({
 				title: '[[phone-verification:admin.user-call-setup-title]]',
 				message: modalHtml,
 				buttons: {
@@ -139,7 +139,7 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts', 'tr
 		});
 
 		$('#refresh-call-token-btn').on('click', function() {
-			bootbox.confirm({
+			modals.confirm({
 				title: '[[phone-verification:admin.refresh-token-title]]',
 				message: '[[phone-verification:admin.refresh-token-confirm]]',
 				callback: function(result) {
@@ -232,13 +232,13 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts', 'tr
 		});
 
 		$('#btn-add-manual-user').on('click', function() {
-			bootbox.prompt(tx('admin.prompt-username'), function(username) {
+			modals.prompt(tx('admin.prompt-username'), function(username) {
 				if (!username) return;
 
 				socket.emit('plugins.call2all.getUidByUsername', { username: username }, function(err, uid) {
 					if (err) return errorMessage(err.message || tx('prompt.user-not-found'));
 
-					bootbox.prompt({
+					modals.prompt({
 						title: tx('admin.prompt-phone-for-user', username),
 						inputType: 'text',
 						callback: function(phone) {
@@ -246,7 +246,7 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts', 'tr
 
 							var confirmMsg = tx('admin.add-user-summary', username, phone ? phone : tx('admin.none-with-verified-note'));
 
-							bootbox.confirm(confirmMsg, function(result) {
+							modals.confirm(confirmMsg, function(result) {
 								if (result) {
 									socket.emit('plugins.call2all.adminAddVerifiedUser', { uid: uid, phone: phone }, function(err) {
 										if (err) return errorMessage(err.message);
@@ -299,7 +299,7 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts', 'tr
 		$('#users-table').on('click', '.verify-user-btn', function() {
 			var uid = $(this).data('uid');
 			var name = $(this).data('name');
-			bootbox.confirm(tx('admin.confirm-verify-user', name), function(res) {
+			modals.confirm(tx('admin.confirm-verify-user', name), function(res) {
 				if(res) socket.emit('plugins.call2all.adminVerifyUser', { uid: uid }, function(err) {
 					if(err) return errorMessage(err.message);
 					successMessage(tx('admin.user-verified-now', name));
@@ -311,7 +311,7 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts', 'tr
 		$('#users-table').on('click', '.unverify-user-btn', function() {
 			var uid = $(this).data('uid');
 			var name = $(this).data('name');
-			bootbox.confirm(tx('admin.confirm-unverify-user', name), function(res) {
+			modals.confirm(tx('admin.confirm-unverify-user', name), function(res) {
 				if(res) socket.emit('plugins.call2all.adminUnverifyUser', { uid: uid }, function(err) {
 					if(err) return errorMessage(err.message);
 					successMessage(tx('admin.unverified-success'));
@@ -323,7 +323,7 @@ define('admin/plugins/phone-verification', ['settings', 'bootbox', 'alerts', 'tr
 		$('#users-table').on('click', '.delete-phone-btn', function() {
 			var uid = $(this).data('uid');
 			var name = $(this).data('name');
-			bootbox.confirm(tx('admin.confirm-delete-phone', name), function(res) {
+			modals.confirm(tx('admin.confirm-delete-phone', name), function(res) {
 				if(res) socket.emit('plugins.call2all.adminDeleteUserPhone', { uid: uid }, function(err) {
 					if(err) return errorMessage(err.message);
 					successMessage(tx('admin.deleted-success'));

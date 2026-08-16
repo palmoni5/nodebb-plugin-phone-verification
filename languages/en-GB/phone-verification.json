@@ -88,7 +88,6 @@
   "action.unverify": "Unverify",
   "action.delete": "Delete",
   "field.phone-number": "Phone number",
-  "field.phone-number-required": "Phone number *",
   "field.verification-code": "Verification code",
   "placeholder.last-4-digits": "Last 4 digits of the calling number",
   "placeholder.code-from-call": "Code played during the call",

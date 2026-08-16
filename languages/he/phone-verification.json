@@ -88,7 +88,6 @@
   "action.unverify": "בטל אימות",
   "action.delete": "מחק",
   "field.phone-number": "מספר טלפון",
-  "field.phone-number-required": "מספר טלפון *",
   "field.verification-code": "קוד אימות",
   "placeholder.last-4-digits": "4 ספרות אחרונות של המספר המחייג",
   "placeholder.code-from-call": "קוד שהושמע בשיחה",

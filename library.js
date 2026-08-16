@@ -108,6 +108,21 @@ plugin.getRequestLanguage = async function (req) {
     return await plugin.getDefaultLanguage();
 };
 
+// Mirrors NodeBB core's own guest-language resolution (src/middleware/render.js's
+// getLang()): req.query.lang, then the userLang core already resolved onto
+// res.locals.config for this render, then the site default.
+plugin.resolvePageLanguage = async function (data) {
+    const req = data && data.req;
+    const res = data && data.res;
+    if (req && req.query && req.query.lang) {
+        return req.query.lang;
+    }
+    if (res && res.locals && res.locals.config && res.locals.config.userLang) {
+        return res.locals.config.userLang;
+    }
+    return plugin.getRequestLanguage(req);
+};
+
 // ==================== Permission checks ====================
 
 plugin.checkPostingPermissions = async function (data) {
@@ -448,15 +463,39 @@ plugin.addFieldRegister = async function (data) {
     const showUserCall = settings.userCallEnabled;
     const userCallNumber = settings.userCallNumber || '';
 
+    // NodeBB core still runs the whole-page translation pass in 4.14 (removed only in
+    // 4.15), so this blob is translated up front here rather than left as raw
+    // [[phone-verification:...]] tokens for that pass — this HTML is injected into
+    // register.tpl via {{./html}} (raw/trusted), which bypasses Benchpress's tx() helper
+    // entirely, so nothing else would translate it once 4.15 removes that pass.
+    const language = await plugin.resolvePageLanguage(data);
+    const [
+        chooseMethod, methodTzintuk, methodUserCall, lineNumber,
+        sendVerification, verificationCodeLabel, last4Digits, verifyLabel,
+        sendTzintukAgain, phoneVerifiedLabel, phoneNumberLabel,
+    ] = await Promise.all([
+        plugin.translateFor(language, 'registration.choose-method'),
+        plugin.translateFor(language, 'registration.method-tzintuk'),
+        plugin.translateFor(language, 'registration.method-user-call'),
+        userCallNumber ? plugin.translateFor(language, 'registration.line-number', userCallNumber) : Promise.resolve(''),
+        plugin.translateFor(language, 'action.send-verification'),
+        plugin.translateFor(language, 'field.verification-code'),
+        plugin.translateFor(language, 'placeholder.last-4-digits'),
+        plugin.translateFor(language, 'action.verify'),
+        plugin.translateFor(language, 'registration.send-tzintuk-again'),
+        plugin.translateFor(language, 'success.phone-verified'),
+        plugin.translateFor(language, 'field.phone-number'),
+    ]);
+
     const methodsHtml = (showTzintuk || showUserCall) ? `
         <div class="mb-2 d-flex flex-column gap-2 hidden" id="verification-methods">
-            <label class="form-label fw-bold">[[phone-verification:registration.choose-method]]</label>
+            <label class="form-label fw-bold">${chooseMethod}</label>
             <div class="d-flex flex-column gap-1">
-                ${showTzintuk ? `<label class="form-check-label"><input class="form-check-input" type="radio" name="verificationMethod" value="tzintuk" /> [[phone-verification:registration.method-tzintuk]]</label>` : ''}
-                ${showUserCall ? `<label class="form-check-label"><input class="form-check-input" type="radio" name="verificationMethod" value="user-call" /> [[phone-verification:registration.method-user-call]]</label>` : ''}
+                ${showTzintuk ? `<label class="form-check-label"><input class="form-check-input" type="radio" name="verificationMethod" value="tzintuk" /> ${methodTzintuk}</label>` : ''}
+                ${showUserCall ? `<label class="form-check-label"><input class="form-check-input" type="radio" name="verificationMethod" value="user-call" /> ${methodUserCall}</label>` : ''}
             </div>
             <div class="form-text text-xs" id="method-help"></div>
-            ${userCallNumber ? `<div class="form-text text-xs" id="user-call-number-text">[[phone-verification:registration.line-number, ${userCallNumber}]]</div>` : '<div class="form-text text-xs" id="user-call-number-text" style="display:none;"></div>'}
+            ${userCallNumber ? `<div class="form-text text-xs" id="user-call-number-text">${lineNumber}</div>` : '<div class="form-text text-xs" id="user-call-number-text" style="display:none;"></div>'}
         </div>` : '';
 
     const html = `
@@ -464,7 +503,7 @@ plugin.addFieldRegister = async function (data) {
             <div class="d-flex flex-column">
                 <div class="input-group">
                     <input class="form-control" type="tel" name="phoneNumber" id="phoneNumber" placeholder="05X-XXXXXXX" dir="ltr" autocomplete="tel" />
-                    <button class="btn btn-primary" type="button" id="send-code-btn"><i class="fa fa-phone"></i> [[phone-verification:action.send-verification]]</button>
+                    <button class="btn btn-primary" type="button" id="send-code-btn"><i class="fa fa-phone"></i> ${sendVerification}</button>
                 </div>
                 ${methodsHtml}
                 <div id="phone-error" class="text-danger text-xs hidden"></div>
@@ -472,16 +511,16 @@ plugin.addFieldRegister = async function (data) {
             </div>
         </div>
         <div class="mb-2 d-flex flex-column gap-2 hidden" id="verification-code-container">
-            <label for="verificationCode">[[phone-verification:field.verification-code]]</label>
+            <label for="verificationCode">${verificationCodeLabel}</label>
             <div class="d-flex flex-column">
                 <div class="input-group">
-                    <input class="form-control" type="text" id="verificationCode" placeholder="[[phone-verification:placeholder.last-4-digits]]" maxlength="4" dir="ltr" />
-                    <button class="btn btn-success" type="button" id="verify-code-btn"><i class="fa fa-check"></i> [[phone-verification:action.verify]]</button>
+                    <input class="form-control" type="text" id="verificationCode" placeholder="${last4Digits}" maxlength="4" dir="ltr" />
+                    <button class="btn btn-success" type="button" id="verify-code-btn"><i class="fa fa-check"></i> ${verifyLabel}</button>
                 </div>
-                <button class="btn btn-link btn-sm p-0 text-start" type="button" id="resend-code-btn">[[phone-verification:registration.send-tzintuk-again]]</button>
+                <button class="btn btn-link btn-sm p-0 text-start" type="button" id="resend-code-btn">${sendTzintukAgain}</button>
             </div>
         </div>
-        <div id="phone-verified-badge" class="alert alert-success hidden"><i class="fa fa-check-circle"></i> [[phone-verification:success.phone-verified]]</div>
+        <div id="phone-verified-badge" class="alert alert-success hidden"><i class="fa fa-check-circle"></i> ${phoneVerifiedLabel}</div>
     `.replace(/\r?\n\s*/g, ' ').trim();
 
     if (!data.templateData) {
@@ -493,9 +532,10 @@ plugin.addFieldRegister = async function (data) {
     data.templateData.regFormEntry.push({
         id: 'phone-verification-container',
         inputId: 'phoneNumber',
-        // Must be a single clean [[...]] token: core renders the label via the
-        // tx() template helper, which only parses tokens with no trailing text.
-        label: '[[phone-verification:field.phone-number-required]]',
+        // Already-translated plain text (not a [[ns:key]] token): register.tpl runs this
+        // through core's own {{tx(./label)}} at render time, which safely HTML-escapes
+        // and passes through any string that isn't a recognized translation token.
+        label: `${phoneNumberLabel} *`,
         html: html,
     });
 
